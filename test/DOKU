@@ -1,0 +1,97 @@
+| Taste | Hex      | Bit    |
+| ----- | -------- | ------ |
+| A     | `0x0200` | Bit 9  |
+| B     | `0x0100` | Bit 8  |
+| C     | `0x0008` | Bit 3  |
+| D     | `0x0004` | Bit 2  |
+| E     | `0x0002` | Bit 1  |
+| F     | `0x0010` | Bit 4  |
+| G     | `0x0400` | Bit 10 |
+| H     | `0x0020` | Bit 5  |
+| I     | `0x0080` | Bit 7  |
+| J     | `0x0040` | Bit 6  |
+| K     | `0x4000` | Bit 14 |
+| L     | `0x2000` | Bit 13 |
+| M     | `0x1000` | Bit 12 |
+| N     | `0x8000` | Bit 15 |
+
+*******************************************
+* STECKERLEISTE - ESP32
+*******************************************
+
+
+Schleifer Poti (GPIO34 - gelb)
+|       
+|       GND Poti (Blau)    
+|       |
+|       |                                           
+|       |                                            
+|       |                                           GND Buttons (Grau)
+|       |                                           |
+1   2   3   4   5   6   7   8   9   10  11  12  13  14
+1   2   3   4   5   6   7   8   9   10  11  12  13  14
+|       |                               |   |   |   |   
+|       3.3V Buttons (Grün)             |   |   |   IR-Daten (GPIO27 - Weiss)
+|                                       |   |   |   
+3.3V Poti (Orange)                      |   |   LOAD Buttons (GPIO5 - schwarz)
+                                        |   |   
+                                        |   DATA Buttons (GPIO19 - braun)
+                                        |
+                                        CLOCK Buttons (GPIO18 - rot)
+
+*******************************************
+* PIN BELEGUNG IC
+*******************************************
+
+        OBEN
+16  15  14  13  12  11  10   9
+┌───────────────────────────────┐
+│            74HC165             │
+└───────────────────────────────┘
+ 1   2   3   4   5   6   7   8
+        UNTEN
+        
+*******************************************        
+* VERKABELUNG ESP32 an 74HC165
+*******************************************
+
+ESP32	Tastenplatine
+GPIO19	Pin 9 linker IC (DATA)
+GPIO5	Pin 1 (LOAD)
+GPIO18	Pin 15 (Steuersignal)
+3V3	    Pin 16
+GND	    Pin 8
+
+*******************************************        
+* VERKABELUNG ESP32 an RC522
+*******************************************
+
+RC522 SDA/SS → GPIO21
+RC522 RST    → GPIO22
+RC522 SCK    → GPIO14
+RC522 MOSI   → GPIO13
+RC522 MISO   → GPIO23
+RC522 3.3V   → 3V3
+RC522 GND    → GND
+
+*******************************************        
+* VERKABELUNG ESP32 an DF Player
+*******************************************
+
+RX      GPIO17 (TX2)	 (über 1k Widerstand) GELB
+TX      GPIO16 (RX2) 	 GRÜN
+
+*******************************************        
+* VERKABELUNG ESP32 an TFT
+*******************************************
+
+Pins im eingebauten Zustand von hinten von oben nach unten
+
+VCC	3.3V vom 3.3V-Stepdown  (ROT)
+GND	GND (Schwarz)
+CS	GPIO25 (Blau)
+RESET	GPIO33 (schwarz)
+DC	GPIO26 (Grün)
+SDI (MOSI)	GPIO13 (rot) - Geteilt mit dem RC522!
+SCK	GPIO14 (Gelb) - Geteilt mit dem RC522!
+LED	3.3V (Weiss) - GPIO32
