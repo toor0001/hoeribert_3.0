@@ -1,10 +1,8 @@
 #include "HardwareTestMode.h"
 
 #include "hardware/AudioPlayer.h"
-#include "hardware/ButtonBoard.h"
 // #include "hardware/DisplayManager.h"  // Display deaktiviert
-#include "hardware/IRManager.h"
-#include "hardware/RFIDManager.h"
+
 #include "hardware/WifiOtaManager.h"
 #include "secrets.h"
 
@@ -23,8 +21,6 @@ int currentFolder = 1;
 constexpr int MAX_FOLDER = 99;
 
 // DisplayManager display;  // Display deaktiviert
-ButtonBoard buttonBoard;
-IRManager irManager;
 WifiOtaManager wifiOtaManager;
 AudioPlayer audioPlayer;
 RFIDManager rfidManager;
@@ -95,96 +91,6 @@ void playCurrentFolder() {
   logLine("[DF] AutoPlay Folder");
 }
 
-void handleDfButton(uint16_t newlyPressed) {
-  if (!audioPlayer.isReady()) return;
-
-  if (newlyPressed & ButtonBoard::BTN_F) {
-    audioPlayer.stop();
-    logLine("[DF] STOP");
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_G) {
-    audioPlayer.previous();
-    logLine("[DF] PREVIOUS");
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_H) {
-    if (audioPlayer.isPlayingNow()) {
-      audioPlayer.pause();
-      logLine("[DF] PAUSE");
-    } else {
-      audioPlayer.resume();
-      logLine("[DF] PLAY");
-    }
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_I) {
-    audioPlayer.next();
-    logLine("[DF] NEXT");
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_J) {
-    logLine("[DF] STATUS");
-
-    if (!audioPlayer.isReady()) {
-      logLine("[DF] nicht bereit");
-      return;
-    }
-
-    AudioPlayerStatus status = audioPlayer.readStatus();
-
-    logLine("[DF] State=" + String(status.state));
-    logLine("[DF] Volume=" + String(status.volume) + "/30");
-    logLine("[DF] CurrentFile=" + String(status.currentFile));
-    logLine("[DF] FileCount=" + String(status.fileCount));
-  }
-
-  // N = vorheriger Ordner
-  if (newlyPressed & ButtonBoard::BTN_N) {
-    currentFolder--;
-
-    if (currentFolder < 1) {
-      currentFolder = 1;
-    }
-
-    logLine("[DF] Prev Folder");
-    playCurrentFolder();
-  }
-
-  // L = naechster Ordner
-  if (newlyPressed & ButtonBoard::BTN_L) {
-    currentFolder++;
-
-    if (currentFolder > MAX_FOLDER) {
-      currentFolder = MAX_FOLDER;
-    }
-
-    logLine("[DF] Next Folder");
-    playCurrentFolder();
-  }
-}
-
-void handleButtons() {
-  buttonBoard.update();
-  uint16_t newlyPressed = buttonBoard.getNewlyPressed();
-
-  if (newlyPressed != 0) {
-    logLine("[BUTTON] " + buttonBoard.getLastButtonName());
-    handleDfButton(newlyPressed);
-  }
-}
-
-void handleIR() {
-  if (irManager.update()) {
-    IRReading reading = irManager.getLastReading();
-
-    logLine("[IR]");
-    logLine("Protocol: " + reading.protocol);
-    logLine("Command: 0x" + String(reading.command, HEX));
-    logLine("Raw: 0x" + String(reading.raw, HEX));
-  }
-}
-
 void handleRFID() {
   if (!rfidManager.update()) return;
 
@@ -240,8 +146,6 @@ String tonuinoModeToString(byte mode) {
 } // namespace
 
 void HardwareTestMode::begin() {
-  buttonBoard.begin();
-
   analogReadResolution(12);
   analogSetPinAttenuation(VOL_PIN, ADC_11db);
 
@@ -249,8 +153,6 @@ void HardwareTestMode::begin() {
 
   // display.begin();  // Display deaktiviert
   wifiOtaManager.begin(WIFI_SSID, WIFI_PASS, OTA_NAME, nullptr);  // Display deaktiviert
-
-  irManager.begin();
 
   // display.showHardwareTestScreen();  // Display deaktiviert
 
@@ -271,8 +173,6 @@ void HardwareTestMode::begin() {
 void HardwareTestMode::update() {
   wifiOtaManager.update();
   audioPlayer.update();
-  handleButtons();
-  handleIR();
   applyVolume();
   handleRFID();
 

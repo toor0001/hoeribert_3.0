@@ -6,25 +6,10 @@ void App::begin() {
   Serial.begin(115200);
   delay(1000);
 
-  bootButtons.begin();
-
-  activeMode = shouldStartHardwareTest() ? Mode::HardwareTest : Mode::Normal;
-
-  if (activeMode == Mode::HardwareTest) {
-    hardwareTestMode.begin();
-  } else {
-    normalMode.begin();
-  }
+  // Starte direkt im Normal Mode
+  normalMode.begin();
 }
 
 void App::update() {
-  if (activeMode == Mode::HardwareTest) {
-    hardwareTestMode.update();
-  } else {
-    normalMode.update();
-  }
-}
-
-bool App::shouldStartHardwareTest() const {
-  return bootButtons.isHeld(ButtonBoard::BTN_J);
+  normalMode.update();
 }

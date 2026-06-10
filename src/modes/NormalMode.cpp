@@ -1,7 +1,6 @@
 #include "NormalMode.h"
 
 #include "hardware/AudioPlayer.h"
-#include "hardware/ButtonBoard.h"
 // #include "hardware/DisplayManager.h"  // Display deaktiviert
 #include "hardware/RFIDManager.h"
 
@@ -123,7 +122,6 @@ const char* folderTitle(uint8_t folder) {
 }
 
 // DisplayManager display;  // Display deaktiviert
-ButtonBoard buttonBoard;
 RFIDManager rfidManager;
 AudioPlayer audioPlayer;
 Preferences bookmarkPrefs;
@@ -424,88 +422,6 @@ void updateSleepTimer() {
   }
 }
 
-void handleButtons() {
-  buttonBoard.update();
-  uint16_t newlyPressed = buttonBoard.getNewlyPressed();
-
-  if (newlyPressed != 0) {
-    Serial.println("[NORMAL] Taste: " + buttonBoard.getLastButtonName() +
-                   " mask=0x" + String(newlyPressed, HEX));
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_B) {
-    bool nextEnabled = true;  // display.isEnabled();  // Display deaktiviert
-    nextEnabled = !nextEnabled;
-    // display.setEnabled(nextEnabled);  // Display deaktiviert
-    Serial.println(nextEnabled ? "[NORMAL] Display an" : "[NORMAL] Display aus");
-
-    if (nextEnabled) {
-      redrawNormalDisplay();
-    }
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_A) {
-    unsigned long now = millis();
-
-    if (lastButtonAPressedAt != 0 && now - lastButtonAPressedAt <= DOUBLE_CLICK_MS) {
-      clearSleepTimer();
-      lastButtonAPressedAt = 0;
-    } else {
-      addSleepTimerMinutes(10);
-      lastButtonAPressedAt = now;
-    }
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_C) {
-    preferCoverDisplay = !preferCoverDisplay;
-    Serial.println(preferCoverDisplay ? "[NORMAL] Anzeige: Cover" : "[NORMAL] Anzeige: Ordnertext");
-    redrawNormalDisplay();
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_D) {
-    if (writeCurrentBookmark("Taste D")) {
-      showTemporaryNotification(
-        "BOOKMARK",
-        "Titel " + formatTrack(activeBookmarkTrack) + "  Zeit " + formatTime(activeBookmarkSeconds)
-      );
-    } else {
-      showBookmarkError("keine Wiedergabe");
-    }
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_E) {
-    if (clearCurrentBookmark("Taste E")) {
-      showTemporaryNotification("BOOKMARK", "geloescht");
-    } else {
-      showBookmarkError("keine Karte");
-    }
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_F) {
-    audioPlayer.stop();
-    currentFolder = 0;
-    activeCardUid = "";
-    rememberDisplayedBookmark(false, 0, 0);
-    // display.showNormalIdle();  // Display deaktiviert
-    Serial.println("[NORMAL] Stop");
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_G) {
-    audioPlayer.previous();
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_H) {
-    if (audioPlayer.isPlayingNow()) {
-      audioPlayer.pause();
-    } else {
-      audioPlayer.resume();
-    }
-  }
-
-  if (newlyPressed & ButtonBoard::BTN_I) {
-    audioPlayer.next();
-  }
-}
 
 void handleRFID() {
   if (!rfidManager.update()) {
@@ -583,7 +499,6 @@ void handleFolderFinished() {
 void NormalMode::begin() {
   Serial.println("[NORMAL] Starte NormalMode");
 
-  buttonBoard.begin();
   rfidManager.begin();
   bookmarkPrefs.begin("bookmarks", false);
   disableWifi();
@@ -607,7 +522,6 @@ void NormalMode::begin() {
 void NormalMode::update() {
   audioPlayer.update();
   handleFolderFinished();
-  handleButtons();
   applyVolume();
   handleRFID();
   updateSleepTimer();
