@@ -37,7 +37,7 @@ public:
   String getDebugLine(int index) const;
 
 private:
-  static constexpr uint8_t RFID_SS_PIN   = 21;
+  static constexpr uint8_t RFID_SS_PIN   = 5;
   static constexpr uint8_t RFID_RST_PIN  = 22;
   static constexpr uint8_t RFID_SCK_PIN  = 14;
   static constexpr uint8_t RFID_MISO_PIN = 23;
