@@ -2,7 +2,7 @@
 
 #include "hardware/AudioPlayer.h"
 #include "hardware/ButtonBoard.h"
-#include "hardware/DisplayManager.h"
+// #include "hardware/DisplayManager.h"  // Display deaktiviert
 #include "hardware/RFIDManager.h"
 
 #include <Arduino.h>
@@ -122,7 +122,7 @@ const char* folderTitle(uint8_t folder) {
   }
 }
 
-DisplayManager display;
+// DisplayManager display;  // Display deaktiviert
 ButtonBoard buttonBoard;
 RFIDManager rfidManager;
 AudioPlayer audioPlayer;
@@ -194,24 +194,27 @@ void disableWifi() {
 }
 
 void showCurrentFolderDisplay() {
-  if (preferCoverDisplay && display.showFolderImage(currentFolder)) {
-    return;
-  }
+  // if (preferCoverDisplay && display.showFolderImage(currentFolder)) {  // Display deaktiviert
+  //   return;
+  // }
 
-  display.showFolderPlaying(currentFolder, folderTitle(currentFolder));
-  display.showBookmarkStatus(activeBookmarkValid, activeBookmarkTrack, activeBookmarkSeconds);
+  // display.showFolderPlaying(currentFolder, folderTitle(currentFolder));  // Display deaktiviert
+  // display.showBookmarkStatus(activeBookmarkValid, activeBookmarkTrack, activeBookmarkSeconds);  // Display deaktiviert
+  Serial.println("[NORMAL] Ordner: " + String(currentFolder) + " - " + folderTitle(currentFolder));
 }
 
 void redrawNormalDisplay() {
   if (currentFolder > 0) {
     showCurrentFolderDisplay();
   } else {
-    display.showNormalIdle();
+    // display.showNormalIdle();  // Display deaktiviert
+    Serial.println("[NORMAL] Idle - bereit für Karte");
   }
 
   if (sleepTimerEndsAt > 0) {
     unsigned long remainingSeconds = max(1UL, (sleepTimerEndsAt - millis() + 999) / 1000);
-    display.showSleepTimerRemaining(remainingSeconds);
+    // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
+    Serial.println("[NORMAL] Sleep Timer: " + String(remainingSeconds) + "s");
   }
 }
 
@@ -231,14 +234,14 @@ void addSleepTimerMinutes(uint8_t minutes) {
 
   lastSleepTimerDrawnSecond = 0;
   unsigned long remainingSeconds = max(1UL, (sleepTimerEndsAt - millis() + 999) / 1000);
-  display.showSleepTimerRemaining(remainingSeconds);
+  // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
   Serial.println("[NORMAL] Sleep Timer +" + String(minutes) + " min");
 }
 
 void clearSleepTimer() {
   sleepTimerEndsAt = 0;
   lastSleepTimerDrawnSecond = 0;
-  display.clearSleepTimer();
+  // display.clearSleepTimer();  // Display deaktiviert
   Serial.println("[NORMAL] Sleep Timer geloescht");
 }
 
@@ -261,7 +264,8 @@ String formatTime(uint16_t seconds) {
 
 void showTemporaryNotification(const String& title, const String& detail = "") {
   notificationEndsAt = millis() + NOTIFICATION_MS;
-  display.showNotification(title, detail);
+  // display.showNotification(title, detail);  // Display deaktiviert
+  Serial.println("[NORMAL] Notification: " + title + (detail.length() > 0 ? " - " + detail : ""));
 }
 
 void showBookmarkError(const String& detail) {
@@ -290,9 +294,9 @@ void rememberDisplayedBookmark(bool valid, uint8_t track, uint16_t seconds) {
   activeBookmarkTrack = valid ? track : 0;
   activeBookmarkSeconds = valid ? seconds : 0;
 
-  if (currentFolder > 0 && !preferCoverDisplay) {
-    display.showBookmarkStatus(activeBookmarkValid, activeBookmarkTrack, activeBookmarkSeconds);
-  }
+  // if (currentFolder > 0 && !preferCoverDisplay) {  // Display deaktiviert
+  //   display.showBookmarkStatus(activeBookmarkValid, activeBookmarkTrack, activeBookmarkSeconds);
+  // }
 }
 
 String bookmarkStorageKey(const String& uid) {
@@ -404,7 +408,7 @@ void updateSleepTimer() {
     currentFolder = 0;
     activeCardUid = "";
     rememberDisplayedBookmark(false, 0, 0);
-    display.showNormalIdle();
+    // display.showNormalIdle();  // Display deaktiviert
     Serial.println("[NORMAL] Sleep Timer abgelaufen -> Stop");
     return;
   }
@@ -414,7 +418,8 @@ void updateSleepTimer() {
   if (remainingSeconds != lastSleepTimerDrawnSecond) {
     lastSleepTimerDrawnSecond = remainingSeconds;
     if (!notificationActive()) {
-      display.showSleepTimerRemaining(remainingSeconds);
+      // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
+      Serial.println("[NORMAL] Sleep Timer: " + String(remainingSeconds) + "s");
     }
   }
 }
@@ -429,8 +434,9 @@ void handleButtons() {
   }
 
   if (newlyPressed & ButtonBoard::BTN_B) {
-    bool nextEnabled = !display.isEnabled();
-    display.setEnabled(nextEnabled);
+    bool nextEnabled = true;  // display.isEnabled();  // Display deaktiviert
+    nextEnabled = !nextEnabled;
+    // display.setEnabled(nextEnabled);  // Display deaktiviert
     Serial.println(nextEnabled ? "[NORMAL] Display an" : "[NORMAL] Display aus");
 
     if (nextEnabled) {
@@ -480,7 +486,8 @@ void handleButtons() {
     currentFolder = 0;
     activeCardUid = "";
     rememberDisplayedBookmark(false, 0, 0);
-    display.showNormalIdle();
+    // display.showNormalIdle();  // Display deaktiviert
+    Serial.println("[NORMAL] Stop");
   }
 
   if (newlyPressed & ButtonBoard::BTN_G) {
@@ -511,19 +518,19 @@ void handleRFID() {
   TonuinoCardData card = rfidManager.readTonuinoCard();
 
   if (!card.valid) {
-    display.showCardProblem("NICHT LESBAR");
+    // display.showCardProblem("NICHT LESBAR");  // Display deaktiviert
     Serial.println("[NORMAL] Karte nicht lesbar oder Cookie falsch");
     return;
   }
 
   if (card.mode != 2) {
-    display.showCardProblem("MODUS " + String(card.mode));
+    // display.showCardProblem("MODUS " + String(card.mode));  // Display deaktiviert
     Serial.println("[NORMAL] Nicht unterstuetzter Modus: " + String(card.mode));
     return;
   }
 
   if (!audioPlayer.isReady()) {
-    display.showCardProblem("DFPLAYER");
+    // display.showCardProblem("DFPLAYER");  // Display deaktiviert
     Serial.println("[NORMAL] DFPlayer nicht bereit");
     return;
   }
@@ -555,7 +562,8 @@ void handleRFID() {
 
   if (sleepTimerEndsAt > 0) {
     unsigned long remainingSeconds = max(1UL, (sleepTimerEndsAt - millis() + 999) / 1000);
-    display.showSleepTimerRemaining(remainingSeconds);
+    // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
+    Serial.println("[NORMAL] Sleep Timer: " + String(remainingSeconds) + "s");
   }
 }
 
@@ -566,7 +574,7 @@ void handleFolderFinished() {
 
   clearCurrentBookmark("Ordnerende");
   currentFolder = 0;
-  display.showNormalIdle();
+  // display.showNormalIdle();  // Display deaktiviert
   Serial.println("[NORMAL] Ordner beendet");
 }
 
@@ -581,10 +589,8 @@ void NormalMode::begin() {
   disableWifi();
   analogReadResolution(12);
   analogSetPinAttenuation(VOL_PIN, ADC_11db);
-  display.begin();
-  display.showNormalIdle();
-
-  display.showNormalIdle();
+  // display.begin();  // Display deaktiviert
+  // display.showNormalIdle();  // Display deaktiviert
 
   if (audioPlayer.begin()) {
     Serial.println("[NORMAL] " + audioPlayer.getStatusText());
@@ -594,7 +600,7 @@ void NormalMode::begin() {
     Serial.println("[NORMAL] Startvolume " + String(initialVolume) + "/" + String(VOL_MAX));
   } else {
     Serial.println("[NORMAL] " + audioPlayer.getStatusText());
-    display.showCardProblem("DFPLAYER");
+    // display.showCardProblem("DFPLAYER");  // Display deaktiviert
   }
 }
 

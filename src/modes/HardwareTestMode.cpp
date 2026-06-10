@@ -2,7 +2,7 @@
 
 #include "hardware/AudioPlayer.h"
 #include "hardware/ButtonBoard.h"
-#include "hardware/DisplayManager.h"
+// #include "hardware/DisplayManager.h"  // Display deaktiviert
 #include "hardware/IRManager.h"
 #include "hardware/RFIDManager.h"
 #include "hardware/WifiOtaManager.h"
@@ -22,7 +22,7 @@ constexpr int VOL_MAX = 24;
 int currentFolder = 1;
 constexpr int MAX_FOLDER = 99;
 
-DisplayManager display;
+// DisplayManager display;  // Display deaktiviert
 ButtonBoard buttonBoard;
 IRManager irManager;
 WifiOtaManager wifiOtaManager;
@@ -35,7 +35,8 @@ int filteredVolumeRaw = -1;
 String tonuinoModeToString(byte mode);
 
 void logLine(const String& msg) {
-  display.logLine(msg);
+  // display.logLine(msg);  // Display deaktiviert
+  Serial.println(msg);  // Fallback zu Serial
 }
 
 int readAverageRaw() {
@@ -246,12 +247,12 @@ void HardwareTestMode::begin() {
 
   rfidManager.begin();
 
-  display.begin();
-  wifiOtaManager.begin(WIFI_SSID, WIFI_PASS, OTA_NAME, &display);
+  // display.begin();  // Display deaktiviert
+  wifiOtaManager.begin(WIFI_SSID, WIFI_PASS, OTA_NAME, nullptr);  // Display deaktiviert
 
   irManager.begin();
 
-  display.showHardwareTestScreen();
+  // display.showHardwareTestScreen();  // Display deaktiviert
 
   if (audioPlayer.begin()) {
     logLine(audioPlayer.getStatusText());
