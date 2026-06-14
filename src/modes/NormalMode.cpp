@@ -1,12 +1,12 @@
 #include "NormalMode.h"
 
 #include "hardware/AudioPlayer.h"
-// #include "hardware/DisplayManager.h"  // Display deaktiviert
 #include "hardware/RFIDManager.h"
+#include "hardware/WebServerManager.h"
+#include "secrets.h"
 
 #include <Arduino.h>
 #include <Preferences.h>
-#include <WiFi.h>
 #include <math.h>
 
 namespace {
@@ -25,69 +25,69 @@ const char* folderTitle(uint8_t folder) {
       case 5: return "Der Fluch des Rubins";
       case 6: return "Der sprechende Totenkopf";
       case 7: return "Der unheimliche Drache";
-      case 8: return "Der gruene Geist";
-      case 9: return "Die raetselhaften Bilder";
-      case 10: return "Die fluesternde Mumie";
-      case 11: return "Das Gespensterschloss";
-      case 12: return "Der seltsame Wecker";
-      case 13: return "Der lachende Schatten";
-      case 14: return "Das Bergmonster";
-      case 15: return "Der rasende Loewe";
-      case 16: return "Der Zauberspiegel";
-      case 17: return "Die gefaehrliche Erbschaft";
-      case 18: return "Die Geisterinsel";
-      case 19: return "Der Teufelsberg";
-      case 20: return "Die flammende Spur";
-      case 21: return "Der tanzende Teufel";
-      case 22: return "Der verschwundene Schatz";
-      case 23: return "Das Aztekenschwert";
-      case 24: return "Die silberne Spinne";
-      case 25: return "Die singende Schlange";
-      case 26: return "Die Silbermine";
-      case 27: return "Der magische Kreis";
-      case 28: return "Der Doppelgaenger";
-      case 29: return "Die Originalmusik";
-      case 30: return "Das Riff der Haie";
-      case 31: return "Das Narbengesicht";
-      case 32: return "Der Ameisenmensch";
-      case 33: return "Die bedrohte Ranch";
-      case 34: return "Der rote Pirat";
-      case 35: return "Der Hoehlenmensch";
-      case 36: return "Der Super-Wal";
-      case 37: return "Der heimliche Hehler";
-      case 38: return "Der unsichtbare Gegner";
-      case 39: return "Die Perlenvoegel";
-      case 40: return "Der Automarder";
-      case 41: return "Das Volk der Winde";
-      case 42: return "Der weinende Sarg";
-      case 43: return "Der hoellische Werwolf";
-      case 44: return "Der gestohlene Preis";
-      case 45: return "Das Gold der Wikinger";
-      case 46: return "Der schrullige Millionaer";
-      case 47: return "Der giftige Gockel";
-      case 48: return "Die gefaehrlichen Faesser";
-      case 49: return "Die Comic-Diebe";
-      case 50: return "Der verschwundene Filmstar";
-      case 51: return "Der riskante Ritt";
-      case 52: return "Die Musikpiraten";
-      case 53: return "Die Automafia";
-      case 54: return "Gefahr im Verzug";
-      case 55: return "Gekaufte Spieler";
-      case 56: return "Angriff der Computer-Viren";
+      case 8: return "Der grüne Geist";
+      case 9: return "Die rätselhaften Bilder";
+      case 10: return "Und die flüsternde Mumie";
+      case 11: return "Und das Gespensterschloss";
+      case 12: return "Und der seltsame Wecker";
+      case 13: return "Und der lachende Schatten";
+      case 14: return "Und der schreiende Nebel";
+      case 15: return "Und der rasende Löwe";
+      case 16: return "Und der Zauberspiegel";
+      case 17: return "Und die gefährliche Erbschaft";
+      case 18: return "Und die Geisterinsel";
+      case 19: return "Und der Teufelsberg";
+      case 20: return "Und die flammende Spur";
+      case 21: return "Und der tanzende Teufel";
+      case 22: return "Und der verschwundene Schatz";
+      case 23: return "Und das Aztekenschwert";
+      case 24: return "Und die silberne Spinne";
+      case 25: return "Und die singende Schlange";
+      case 26: return "Und die Silbermine";
+      case 27: return "Und der magische Kreis";
+      case 28: return "Und der Doppelgänger";
+      case 29: return "Und die falschen Detektive";
+      case 30: return "Und das Riff der Haie";
+      case 31: return "Und das Narbengesicht";
+      case 32: return "Und der Ameisenmensch";
+      case 33: return "Und die bedrohte Ranch";
+      case 34: return "Und der rote Pirat";
+      case 35: return "Und der Höhlenmensch";
+      case 36: return "Und der Super-Wal";
+      case 37: return "Und der heimliche Hehler";
+      case 38: return "Und der unsichtbare Gegner";
+      case 39: return "Und die Perlenvögel";
+      case 40: return "Und der Automarder";
+      case 41: return "Und das Volk der Winde";
+      case 42: return "Und der weinende Sarg";
+      case 43: return "Und der höllische Werwolf";
+      case 44: return "Und der gestohlene Preis";
+      case 45: return "Und das Gold der Wikinger";
+      case 46: return "Und der schrullige Millionär";
+      case 47: return "Und der giftige Gockel";
+      case 48: return "Und die gefährlichen Fässer";
+      case 49: return "Und die Comic-Diebe";
+      case 50: return "Und der verschwundene Filmstar";
+      case 51: return "Und der riskante Ritt";
+      case 52: return "Und die Musikpiraten";
+      case 53: return "Und die Automafia";
+      case 54: return "Und der rote Rächer";
+      case 55: return "Und der verrückte Maler";
+      case 56: return "Und der verschwundene Fußballer";
       case 57: return "Tatort Zirkus";
-      case 58: return "Der verrueckte Maler";
-      case 59: return "Giftiges Wasser";
-      case 60: return "Dopingmixer";
-      case 61: return "Die Rache des Tigers";
+      case 58: return "Und der verrückte Erfinder";
+      case 59: return "Und die Rache des Tigers";
+      case 60: return "Und die Geisterbahn";
+      case 61: return "Und die Rache des Untoten";
       case 62: return "Spuk im Hotel";
-      case 63: return "Fussball-Gangster";
+      case 63: return "Fußball-Gangster";
       case 64: return "Geisterstadt";
-      case 65: return "Diamanten- schmuggel";
-      case 66: return "Die Schattenmaenner";
-      case 67: return "Das Geheimnis der Saerge";
-      case 68: return "Der Schatz im Bergsee";
-      case 69: return "Spaete Rache";
-      case 70: return "Schuesse aus dem Dunkel";
+      case 65: return "Diamantenschmuggel";
+      case 66: return "Die Schattenmänner";
+      case 67: return "Das Geheimnis der Särge";
+      case 68: return "Schatz im Bergsee";
+      case 69: return "Späte Rache";
+      case 70: return "Schüsse aus dem Dunkel";
       case 71: return "Die verschwundene Seglerin";
       case 72: return "Dreckiger Deal";
       case 73: return "Poltergeist";
@@ -97,48 +97,45 @@ const char* folderTitle(uint8_t folder) {
       case 77: return "Pistenteufel";
       case 78: return "Das leere Grab";
       case 79: return "Im Bann des Voodoo";
-      case 80: return "Geheimakte UFO";
+      case 80: return "Geheimnis der Karten";
       case 81: return "Verdeckte Fouls";
-      case 82: return "Die Karten des Boesen";
+      case 82: return "Die Karten des Bösen";
       case 83: return "Meuterei auf hoher See";
-      case 84: return "Die Musik des Teufels";
+      case 84: return "Musik des Teufels";
       case 85: return "Feuerturm";
       case 86: return "Nacht in Angst";
       case 87: return "Wolfsgesicht";
       case 88: return "Vampir im Internet";
-      case 89: return "Toedliche Spur";
+      case 89: return "Tödliche Spur";
       case 90: return "Der Feuerteufel";
-      case 91: return "Labyrinth der Goetter";
+      case 91: return "Labyrinth der Götter";
       case 92: return "Todesflug";
-      case 93: return "Das Geisterschiff";
-      case 94: return "Das schwarze Monster";
-      case 95: return "Botschaft von Geisterhand";
-      case 96: return "Der rote Raecher";
-      case 97: return "Insekten- stachel";
+      case 93: return "Das schwarze Monster";
+      case 94: return "Botschaft von Geisterhand";
+      case 95: return "Rufmord";
+      case 96: return "Das rote Phantom";
+      case 97: return "Insektenstachel";
       case 98: return "Tal des Schreckens";
-      case 99: return "Rufmord";
+      case 99: return "Ruf der Krähen";
       default: return "Unbekannte Folge";
   }
 }
 
-// DisplayManager display;  // Display deaktiviert
 RFIDManager rfidManager;
 AudioPlayer audioPlayer;
+WebServerManager webServer;
 Preferences bookmarkPrefs;
 
 uint8_t currentFolder = 0;
 int lastVolume = -1;
 int filteredVolumeRaw = -1;
-bool preferCoverDisplay = true;
 String activeCardUid = "";
 bool activeBookmarkValid = false;
 uint8_t activeBookmarkTrack = 0;
 uint16_t activeBookmarkSeconds = 0;
 unsigned long sleepTimerEndsAt = 0;
 unsigned long lastSleepTimerDrawnSecond = 0;
-unsigned long lastButtonAPressedAt = 0;
 unsigned long notificationEndsAt = 0;
-constexpr unsigned long DOUBLE_CLICK_MS = 450;
 constexpr unsigned long NOTIFICATION_MS = 3000;
 
 int readAverageRaw() {
@@ -184,34 +181,19 @@ void applyVolume() {
   }
 }
 
-void disableWifi() {
-  WiFi.persistent(false);
-  WiFi.disconnect(true, true);
-  WiFi.mode(WIFI_OFF);
-  Serial.println("[NORMAL] WLAN aus");
-}
-
-void showCurrentFolderDisplay() {
-  // if (preferCoverDisplay && display.showFolderImage(currentFolder)) {  // Display deaktiviert
-  //   return;
-  // }
-
-  // display.showFolderPlaying(currentFolder, folderTitle(currentFolder));  // Display deaktiviert
-  // display.showBookmarkStatus(activeBookmarkValid, activeBookmarkTrack, activeBookmarkSeconds);  // Display deaktiviert
+void logCurrentFolder() {
   Serial.println("[NORMAL] Ordner: " + String(currentFolder) + " - " + folderTitle(currentFolder));
 }
 
-void redrawNormalDisplay() {
+void logNormalState() {
   if (currentFolder > 0) {
-    showCurrentFolderDisplay();
+    logCurrentFolder();
   } else {
-    // display.showNormalIdle();  // Display deaktiviert
     Serial.println("[NORMAL] Idle - bereit für Karte");
   }
 
   if (sleepTimerEndsAt > 0) {
     unsigned long remainingSeconds = max(1UL, (sleepTimerEndsAt - millis() + 999) / 1000);
-    // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
     Serial.println("[NORMAL] Sleep Timer: " + String(remainingSeconds) + "s");
   }
 }
@@ -232,14 +214,12 @@ void addSleepTimerMinutes(uint8_t minutes) {
 
   lastSleepTimerDrawnSecond = 0;
   unsigned long remainingSeconds = max(1UL, (sleepTimerEndsAt - millis() + 999) / 1000);
-  // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
   Serial.println("[NORMAL] Sleep Timer +" + String(minutes) + " min");
 }
 
 void clearSleepTimer() {
   sleepTimerEndsAt = 0;
   lastSleepTimerDrawnSecond = 0;
-  // display.clearSleepTimer();  // Display deaktiviert
   Serial.println("[NORMAL] Sleep Timer geloescht");
 }
 
@@ -262,7 +242,6 @@ String formatTime(uint16_t seconds) {
 
 void showTemporaryNotification(const String& title, const String& detail = "") {
   notificationEndsAt = millis() + NOTIFICATION_MS;
-  // display.showNotification(title, detail);  // Display deaktiviert
   Serial.println("[NORMAL] Notification: " + title + (detail.length() > 0 ? " - " + detail : ""));
 }
 
@@ -284,17 +263,13 @@ void updateTemporaryNotification() {
   }
 
   notificationEndsAt = 0;
-  redrawNormalDisplay();
+  logNormalState();
 }
 
 void rememberDisplayedBookmark(bool valid, uint8_t track, uint16_t seconds) {
   activeBookmarkValid = valid;
   activeBookmarkTrack = valid ? track : 0;
   activeBookmarkSeconds = valid ? seconds : 0;
-
-  // if (currentFolder > 0 && !preferCoverDisplay) {  // Display deaktiviert
-  //   display.showBookmarkStatus(activeBookmarkValid, activeBookmarkTrack, activeBookmarkSeconds);
-  // }
 }
 
 String bookmarkStorageKey(const String& uid) {
@@ -406,7 +381,6 @@ void updateSleepTimer() {
     currentFolder = 0;
     activeCardUid = "";
     rememberDisplayedBookmark(false, 0, 0);
-    // display.showNormalIdle();  // Display deaktiviert
     Serial.println("[NORMAL] Sleep Timer abgelaufen -> Stop");
     return;
   }
@@ -416,7 +390,6 @@ void updateSleepTimer() {
   if (remainingSeconds != lastSleepTimerDrawnSecond) {
     lastSleepTimerDrawnSecond = remainingSeconds;
     if (!notificationActive()) {
-      // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
       Serial.println("[NORMAL] Sleep Timer: " + String(remainingSeconds) + "s");
     }
   }
@@ -434,19 +407,16 @@ void handleRFID() {
   TonuinoCardData card = rfidManager.readTonuinoCard();
 
   if (!card.valid) {
-    // display.showCardProblem("NICHT LESBAR");  // Display deaktiviert
     Serial.println("[NORMAL] Karte nicht lesbar oder Cookie falsch");
     return;
   }
 
   if (card.mode != 2) {
-    // display.showCardProblem("MODUS " + String(card.mode));  // Display deaktiviert
     Serial.println("[NORMAL] Nicht unterstuetzter Modus: " + String(card.mode));
     return;
   }
 
   if (!audioPlayer.isReady()) {
-    // display.showCardProblem("DFPLAYER");  // Display deaktiviert
     Serial.println("[NORMAL] DFPlayer nicht bereit");
     return;
   }
@@ -474,11 +444,10 @@ void handleRFID() {
     Serial.println("[NORMAL] Spiele Ordner " + String(currentFolder));
   }
 
-  showCurrentFolderDisplay();
+  logCurrentFolder();
 
   if (sleepTimerEndsAt > 0) {
     unsigned long remainingSeconds = max(1UL, (sleepTimerEndsAt - millis() + 999) / 1000);
-    // display.showSleepTimerRemaining(remainingSeconds);  // Display deaktiviert
     Serial.println("[NORMAL] Sleep Timer: " + String(remainingSeconds) + "s");
   }
 }
@@ -490,7 +459,6 @@ void handleFolderFinished() {
 
   clearCurrentBookmark("Ordnerende");
   currentFolder = 0;
-  // display.showNormalIdle();  // Display deaktiviert
   Serial.println("[NORMAL] Ordner beendet");
 }
 
@@ -501,11 +469,12 @@ void NormalMode::begin() {
 
   rfidManager.begin();
   bookmarkPrefs.begin("bookmarks", false);
-  disableWifi();
+  
+  // Starte Web-Interface statt WiFi zu deaktivieren
+  webServer.begin(WIFI_SSID, WIFI_PASS, &audioPlayer);
+  
   analogReadResolution(12);
   analogSetPinAttenuation(VOL_PIN, ADC_11db);
-  // display.begin();  // Display deaktiviert
-  // display.showNormalIdle();  // Display deaktiviert
 
   if (audioPlayer.begin()) {
     Serial.println("[NORMAL] " + audioPlayer.getStatusText());
@@ -515,12 +484,12 @@ void NormalMode::begin() {
     Serial.println("[NORMAL] Startvolume " + String(initialVolume) + "/" + String(VOL_MAX));
   } else {
     Serial.println("[NORMAL] " + audioPlayer.getStatusText());
-    // display.showCardProblem("DFPLAYER");  // Display deaktiviert
   }
 }
 
 void NormalMode::update() {
   audioPlayer.update();
+  webServer.update();
   handleFolderFinished();
   applyVolume();
   handleRFID();

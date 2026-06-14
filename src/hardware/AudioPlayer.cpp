@@ -114,6 +114,7 @@ void AudioPlayer::pause() {
 
 void AudioPlayer::resume() {
   if (!ready) return;
+  if (currentFolder == 0 || currentTrack == 0) return;
 
   dfPlayer.start();
   playing = true;
