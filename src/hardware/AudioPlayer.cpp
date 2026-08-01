@@ -58,6 +58,7 @@ void AudioPlayer::playFolder(uint8_t folder) {
   startFolderTrack(folder, 1);
 }
 
+
 void AudioPlayer::playFolderTrack(uint8_t folder, uint8_t track) {
   if (!ready) return;
 
@@ -157,7 +158,16 @@ void AudioPlayer::previous() {
 void AudioPlayer::setVolume(uint8_t volume) {
   if (!ready) return;
 
-  dfPlayer.volume(volume);
+  constexpr uint8_t LOGICAL_MAX_VOLUME = 10;
+  constexpr uint8_t MIN_AUDIBLE_VOLUME = 1;
+  constexpr uint8_t DF_MAX_VOLUME = 24;
+  currentVolume = constrain(volume, static_cast<uint8_t>(0), LOGICAL_MAX_VOLUME);
+  uint8_t dfVolume = volume == 0
+                         ? 0
+                         : map(constrain(volume, static_cast<uint8_t>(1), LOGICAL_MAX_VOLUME),
+                               1, LOGICAL_MAX_VOLUME,
+                               MIN_AUDIBLE_VOLUME, DF_MAX_VOLUME);
+  dfPlayer.volume(dfVolume);
 }
 
 AudioPlayerStatus AudioPlayer::readStatus() {
@@ -168,7 +178,7 @@ AudioPlayerStatus AudioPlayer::readStatus() {
   }
 
   status.state = dfPlayer.readState();
-  status.volume = dfPlayer.readVolume();
+  status.volume = currentVolume;
   status.currentFile = dfPlayer.readCurrentFileNumber();
   status.fileCount = dfPlayer.readFileCounts();
 

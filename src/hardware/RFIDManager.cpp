@@ -6,9 +6,17 @@ void RFIDManager::begin() {
   SPI.begin(RFID_SCK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN, RFID_SS_PIN);
 
   rfid.PCD_Init();
+  delay(50);
+  rfid.PCD_AntennaOn();
+  rfid.PCD_SetAntennaGain(rfid.RxGain_max);
+  readerVersion = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+
   for (byte i = 0; i < 6; i++) {
     rfidKey.keyByte[i] = 0xFF;
   }
+
+  Serial.println("[RFID] RC522 Version " + getReaderVersionText() +
+                 (isReaderConnected() ? " erkannt" : " nicht erreichbar"));
 }
 
 bool RFIDManager::update() {
@@ -74,7 +82,9 @@ bool RFIDManager::selectCard(uint8_t attempts) {
     }
 
     lastError = String(rfid.GetStatusCodeName(status));
-    delay(10);
+    if (attempt + 1 < attempts) {
+      delay(2);
+    }
   }
 
   return false;
@@ -113,23 +123,7 @@ bool RFIDManager::readTonuinoRawData(byte* data) {
 
   // ===== ULTRALIGHT =====
   if (piccType == MFRC522::PICC_TYPE_MIFARE_UL) {
-    byte size = BUFFER_LENGTH;
-    MFRC522::StatusCode status = rfid.MIFARE_Read(8, data, &size);
-
-    if (status == MFRC522::STATUS_OK) {
-      memcpy(lastRawBytes, data, BUFFER_LENGTH);
-      lastRawData = bytesToHexLine(data, RAW_DATA_LENGTH);
-      lastRawDataAvailable = true;
-      addDebugLine("[RFID] UL Pages 8-11 gelesen");
-      return true;
-    }
-
-    lastError = String(rfid.GetStatusCodeName(status));
-    addDebugLine("[RFID] UL Pages 8-11 Fehler");
-    addDebugLine(lastError);
-    addDebugLine("[RFID] UL Dump start");
-
-    for (byte page = 0; page <= 44; page += 4) {
+    for (byte page = 4; page <= 40; page += 4) {
       byte buffer[BUFFER_LENGTH];
       byte size = sizeof(buffer);
 
@@ -142,10 +136,26 @@ bool RFIDManager::readTonuinoRawData(byte* data) {
         continue;
       }
 
-      addDebugLine("[UL] p" + String(page) + ": " + bytesToHexLine(buffer, RAW_DATA_LENGTH));
+      bool validCookie =
+        buffer[0] == 0x13 &&
+        buffer[1] == 0x37 &&
+        buffer[2] == 0xB3 &&
+        buffer[3] == 0x47;
+
+      if (!validCookie) {
+        continue;
+      }
+
+      memcpy(data, buffer, BUFFER_LENGTH);
+      memcpy(lastRawBytes, data, BUFFER_LENGTH);
+      lastRawData = bytesToHexLine(data, RAW_DATA_LENGTH);
+      lastRawDataAvailable = true;
+      addDebugLine("[RFID] UL Pages " + String(page) + "-" + String(page + 3) + " gelesen");
+      return true;
     }
 
-    addDebugLine("[RFID] UL Dump end");
+    lastError = "TonUINO Cookie auf UL nicht gefunden";
+    addDebugLine("[RFID] UL Cookie nicht gefunden");
     return false;
   }
 
@@ -229,6 +239,20 @@ String RFIDManager::getLastRawData() const {
 
 String RFIDManager::getLastError() const {
   return lastError;
+}
+
+String RFIDManager::getReaderVersionText() const {
+  String text = "0x";
+  if (readerVersion < 0x10) {
+    text += "0";
+  }
+  text += String(readerVersion, HEX);
+  text.toUpperCase();
+  return text;
+}
+
+bool RFIDManager::isReaderConnected() const {
+  return readerVersion != 0x00 && readerVersion != 0xFF;
 }
 
 bool RFIDManager::hasLastRawData() const {

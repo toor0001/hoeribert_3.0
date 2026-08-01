@@ -50,6 +50,7 @@ private:
   uint8_t currentFolder = 0;
   uint8_t currentTrack = 0;
   int tracksInFolder = 0;
+  uint8_t currentVolume = 0;
   unsigned long trackStartedAt = 0;
   uint16_t trackElapsedBeforePause = 0;
   String statusText = "DFPlayer nicht gestartet";

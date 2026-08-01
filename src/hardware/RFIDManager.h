@@ -31,6 +31,8 @@ public:
   String getLastCardType() const;
   String getLastRawData() const;
   String getLastError() const;
+  String getReaderVersionText() const;
+  bool isReaderConnected() const;
   bool hasLastRawData() const;
   void copyLastRawData(byte* data, size_t maxLength) const;
   int getDebugLineCount() const;
@@ -39,9 +41,9 @@ public:
 private:
   static constexpr uint8_t RFID_SS_PIN   = 5;
   static constexpr uint8_t RFID_RST_PIN  = 22;
-  static constexpr uint8_t RFID_SCK_PIN  = 14;
-  static constexpr uint8_t RFID_MISO_PIN = 23;
-  static constexpr uint8_t RFID_MOSI_PIN = 13;
+  static constexpr uint8_t RFID_SCK_PIN  = 18;
+  static constexpr uint8_t RFID_MISO_PIN = 19;
+  static constexpr uint8_t RFID_MOSI_PIN = 23;
   static constexpr int RAW_DATA_LENGTH = 16;
   static constexpr int BUFFER_LENGTH = 18;
   static constexpr int MAX_DEBUG_LINES = 16;
@@ -58,6 +60,7 @@ private:
 
   MFRC522 rfid{RFID_SS_PIN, RFID_RST_PIN};
   MFRC522::MIFARE_Key rfidKey;
+  byte readerVersion = 0;
   String lastUid = "";
   String lastReportedUid = "";
   String lastCardType = "";

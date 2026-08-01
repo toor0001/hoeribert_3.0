@@ -1,7 +1,12 @@
 #include "WebServerManager.h"
 #include "AudioPlayer.h"
 #include "WebAssets.h"
+#include <ArduinoOTA.h>
 #include <WiFi.h>
+
+namespace {
+constexpr bool HTTP_SERVER_ENABLED = false;
+}
 
 const char* htmlPage = R"rawliteral(
 <!DOCTYPE html>
@@ -473,9 +478,9 @@ const char* htmlPage = R"rawliteral(
     <div class="slider-group">
       <div class="slider-label">
         <span>Lautstärke</span>
-        <span id="volvalue">15</span>
+        <span id="volvalue">5</span>
       </div>
-      <input type="range" id="volume" min="0" max="30" value="15">
+      <input type="range" id="volume" min="0" max="10" value="5">
     </div>
     
     <div class="controls">
@@ -634,8 +639,8 @@ const char* htmlPage = R"rawliteral(
           document.getElementById('filecount').textContent = data.fileCount || '-';
           document.getElementById('seconds').textContent = formatSeconds(data.seconds);
           document.getElementById('tape-line').textContent = data.folder ? ('ORDNER ' + data.folder + ' / TRACK ' + (data.track || '-')) : 'BEREIT';
-          document.getElementById('volume').value = data.volume || 15;
-          document.getElementById('volvalue').textContent = data.volume || 15;
+          document.getElementById('volume').value = data.volume ?? 5;
+          document.getElementById('volvalue').textContent = data.volume ?? 5;
         })
         .catch(e => addClientLog('status fehler: ' + e.message));
     }
@@ -685,11 +690,11 @@ const char* htmlPage = R"rawliteral(
 </html>
 )rawliteral";
 
-void WebServerManager::begin(const char* ssid, const char* password, AudioPlayer* audioPlayer) {
+void WebServerManager::begin(const char* ssid, const char* password, const char* otaName, AudioPlayer* audioPlayer) {
   player = audioPlayer;
   
   WiFi.begin(ssid, password);
-  appendLog("[WEB] WiFi verbinden...");
+  log("[WEB] WiFi verbinden...");
   Serial.println("[WEB] WiFi verbinden...");
   
   int attempts = 0;
@@ -700,12 +705,14 @@ void WebServerManager::begin(const char* ssid, const char* password, AudioPlayer
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    appendLog("[WEB] WiFi verbunden");
-    appendLog("[WEB] IP: " + WiFi.localIP().toString());
-    appendLog("[WEB] Web-Interface: http://" + WiFi.localIP().toString());
+    log("[WEB] WiFi verbunden");
+    log("[WEB] IP: " + WiFi.localIP().toString());
+    log(HTTP_SERVER_ENABLED ? "[WEB] Web-Interface: http://" + WiFi.localIP().toString()
+                            : "[WEB] HTTP voruebergehend deaktiviert");
     Serial.println("\n[WEB] WiFi verbunden!");
     Serial.println("[WEB] IP: " + WiFi.localIP().toString());
-    Serial.println("[WEB] Web-Interface: http://" + WiFi.localIP().toString());
+    Serial.println(HTTP_SERVER_ENABLED ? "[WEB] Web-Interface: http://" + WiFi.localIP().toString()
+                                      : "[WEB] HTTP voruebergehend deaktiviert");
     
     server.on("/", [this]() { handleRoot(); });
     server.on("/assets/itt-sl58-panel.webp", [this]() { handlePanelImage(); });
@@ -714,36 +721,72 @@ void WebServerManager::begin(const char* ssid, const char* password, AudioPlayer
     server.on("/api/control", [this]() { handleControl(); });
     server.on("/api/volume", HTTP_GET, [this]() {
       if (!player) {
-        appendLog("[WEB] Volume Fehler: Player nicht bereit");
+        log("[WEB] Volume Fehler: Player nicht bereit");
         server.send(503, "application/json", "{\"error\":\"player unavailable\"}");
         return;
       }
 
       if (!server.hasArg("vol")) {
-        appendLog("[WEB] Volume Fehler: Parameter fehlt");
+        log("[WEB] Volume Fehler: Parameter fehlt");
         server.send(400, "application/json", "{\"error\":\"missing vol\"}");
         return;
       }
 
       int vol = server.arg("vol").toInt();
-      player->setVolume(constrain(vol, 0, 30));
-      appendLog("[WEB] Volume " + String(constrain(vol, 0, 30)));
+      player->setVolume(constrain(vol, 0, 10));
+      log("[WEB] Volume " + String(constrain(vol, 0, 10)));
       server.send(200, "application/json", "{\"ok\":true}");
     });
     
-    server.begin();
+    if (HTTP_SERVER_ENABLED) {
+      server.begin();
+    }
+    logStreamServer.begin();
+    ArduinoOTA.setHostname(otaName);
+    ArduinoOTA.onStart([this]() {
+      log("[OTA] Update gestartet");
+      Serial.println("[OTA] Update gestartet");
+    });
+    ArduinoOTA.onEnd([this]() {
+      log("[OTA] Update beendet");
+      Serial.println("[OTA] Update beendet");
+    });
+    ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) {
+      static uint8_t lastPercent = 255;
+      uint8_t percent = total > 0 ? static_cast<uint8_t>((progress * 100U) / total) : 0;
+      if (percent != lastPercent && percent % 10 == 0) {
+        lastPercent = percent;
+        log("[OTA] Fortschritt " + String(percent) + "%");
+        Serial.println("[OTA] Fortschritt " + String(percent) + "%");
+      }
+    });
+    ArduinoOTA.onError([this](ota_error_t error) {
+      String text = "[OTA] Fehler " + String(static_cast<int>(error));
+      log(text);
+      Serial.println(text);
+    });
+    ArduinoOTA.begin();
+
     initialized = true;
-    appendLog("[WEB] Server gestartet");
-    Serial.println("[WEB] Server gestartet!");
+    log(HTTP_SERVER_ENABLED ? "[WEB] HTTP-Server gestartet" : "[WEB] HTTP-Server aus");
+    log("[LOG] Live-Konsole: nc " + WiFi.localIP().toString() + " " + String(LOG_STREAM_PORT));
+    log("[OTA] Bereit: " + String(otaName) + " @ " + WiFi.localIP().toString());
+    Serial.println(HTTP_SERVER_ENABLED ? "[WEB] HTTP-Server gestartet!" : "[WEB] HTTP-Server aus");
+    Serial.println("[LOG] Live-Konsole: nc " + WiFi.localIP().toString() + " " + String(LOG_STREAM_PORT));
+    Serial.println("[OTA] Bereit: " + String(otaName) + " @ " + WiFi.localIP().toString());
   } else {
-    appendLog("[WEB] WiFi-Verbindung fehlgeschlagen");
+    log("[WEB] WiFi-Verbindung fehlgeschlagen");
     Serial.println("[WEB] ✗ WiFi-Verbindung fehlgeschlagen");
   }
 }
 
 void WebServerManager::update() {
   if (initialized) {
-    server.handleClient();
+    if (HTTP_SERVER_ENABLED) {
+      server.handleClient();
+    }
+    updateLogStream();
+    ArduinoOTA.handle();
   }
 }
 
@@ -790,7 +833,7 @@ String WebServerManager::getStatusText(int state) const {
 
 void WebServerManager::handleControl() {
   if (!server.hasArg("cmd") || !player) {
-    appendLog("[WEB] Control Fehler: cmd fehlt");
+    log("[WEB] Control Fehler: cmd fehlt");
     server.send(400, "application/json", "{\"error\":\"missing cmd\"}");
     return;
   }
@@ -800,35 +843,35 @@ void WebServerManager::handleControl() {
   if (cmd == "playpause") {
     if (player->isPlayingNow()) {
       player->pause();
-      appendLog("[WEB] Pause");
+      log("[WEB] Pause");
     } else {
       player->resume();
-      appendLog("[WEB] Play");
+      log("[WEB] Play");
     }
   } else if (cmd == "play") {
     player->resume();
-    appendLog("[WEB] Play");
+    log("[WEB] Play");
   } else if (cmd == "pause") {
     player->pause();
-    appendLog("[WEB] Pause");
+    log("[WEB] Pause");
   } else if (cmd == "stop") {
     player->stop();
-    appendLog("[WEB] Stop");
+    log("[WEB] Stop");
   } else if (cmd == "next") {
     player->next();
-    appendLog("[WEB] Next");
+    log("[WEB] Next");
   } else if (cmd == "previous") {
     player->previous();
-    appendLog("[WEB] Previous");
+    log("[WEB] Previous");
   } else if (cmd.startsWith("folder-")) {
     String folderStr = cmd.substring(7);
     int folder = folderStr.toInt();
     if (folder > 0 && folder <= 99) {
       player->playFolder(folder);
-      appendLog("[WEB] Ordner " + String(folder));
+      log("[WEB] Ordner " + String(folder));
     }
   } else {
-    appendLog("[WEB] Unbekannter Befehl: " + cmd);
+    log("[WEB] Unbekannter Befehl: " + cmd);
   }
   
   server.send(200, "application/json", "{\"ok\":true}");
@@ -871,7 +914,45 @@ String WebServerManager::jsonEscape(const String& value) const {
   return escaped;
 }
 
-void WebServerManager::appendLog(const String& line) {
+void WebServerManager::updateLogStream() {
+  WiFiClient newClient = logStreamServer.available();
+  if (newClient) {
+    for (int i = 0; i < LOG_STREAM_CLIENT_COUNT; i++) {
+      if (!logStreamClients[i] || !logStreamClients[i].connected()) {
+        logStreamClients[i] = newClient;
+        logStreamClients[i].println("ITT SL58 Live-Log");
+        for (int j = 0; j < storedLogLines; j++) {
+          int index = nextLogLine - storedLogLines + j;
+          while (index < 0) {
+            index += LOG_LINE_COUNT;
+          }
+          index %= LOG_LINE_COUNT;
+          logStreamClients[i].println(logLines[index]);
+        }
+        return;
+      }
+    }
+
+    newClient.println("Log-Konsole belegt");
+    newClient.stop();
+  }
+
+  for (int i = 0; i < LOG_STREAM_CLIENT_COUNT; i++) {
+    if (logStreamClients[i] && !logStreamClients[i].connected()) {
+      logStreamClients[i].stop();
+    }
+  }
+}
+
+void WebServerManager::sendLogStreamLine(const String& line) {
+  for (int i = 0; i < LOG_STREAM_CLIENT_COUNT; i++) {
+    if (logStreamClients[i] && logStreamClients[i].connected()) {
+      logStreamClients[i].println(line);
+    }
+  }
+}
+
+void WebServerManager::log(const String& line) {
   unsigned long seconds = millis() / 1000UL;
   String stamped = "[" + String(seconds) + "s] " + line;
   logLines[nextLogLine] = stamped;
@@ -879,4 +960,5 @@ void WebServerManager::appendLog(const String& line) {
   if (storedLogLines < LOG_LINE_COUNT) {
     storedLogLines++;
   }
+  sendLogStreamLine(stamped);
 }

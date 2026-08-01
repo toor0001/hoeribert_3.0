@@ -1,24 +1,30 @@
 #pragma once
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <WebServer.h>
 
 class AudioPlayer;  // Forward declaration
 
 class WebServerManager {
 public:
-  void begin(const char* ssid, const char* password, AudioPlayer* audioPlayer);
+  void begin(const char* ssid, const char* password, const char* otaName, AudioPlayer* audioPlayer);
   void update();
   void handleRoot();
   void handleStatus();
   void handleControl();
   void handleLogs();
   void handlePanelImage();
+  void log(const String& line);
 
 private:
   static constexpr int LOG_LINE_COUNT = 18;
+  static constexpr uint16_t LOG_STREAM_PORT = 2323;
+  static constexpr int LOG_STREAM_CLIENT_COUNT = 2;
 
   WebServer server{80};
+  WiFiServer logStreamServer{LOG_STREAM_PORT};
+  WiFiClient logStreamClients[LOG_STREAM_CLIENT_COUNT];
   AudioPlayer* player = nullptr;
   bool initialized = false;
   String logLines[LOG_LINE_COUNT];
@@ -29,5 +35,6 @@ private:
   String getStatusText(int state) const;
   String getLogsJSON() const;
   String jsonEscape(const String& value) const;
-  void appendLog(const String& line);
+  void updateLogStream();
+  void sendLogStreamLine(const String& line);
 };

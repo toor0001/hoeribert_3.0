@@ -1,3 +1,44 @@
+POTI
+
+GELB    GPIO34
+GRÜN    GND
+BLAU    3.3V
+
+LED
+
+GRAU    GPIO32  
+LILA    GND
+
+TASTER
+
+SCHWARZ GND
+WEISS   GPIO25
+
+HALL VOR 
+
+GRÜN 3V3
+GELB GND
+LILA GPIO14
+
+HALL ZURÜCK
+
+ORANGE  GPIO13 
+ROT     3V3
+BRAUN   GND
+
+PLAY/PAUSE
+
+GRÜN    GND
+BLAU    GPIO26
+
+
+
+
+
+
+
+
+
 *******************************************        
 * VERKABELUNG ESP32 an RC522
 *******************************************
