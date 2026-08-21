@@ -1,5 +1,7 @@
 # 🎧 Höribert 3.0
 
+![Höribert 3.0](images/hoeribert3-0.png)
+
 > Ein moderner RFID-Hörspielplayer im Gehäuse eines klassischen **ITT SL59 Kassettenrecorders**.
 
 Höribert 3.0 verbindet die Haptik eines alten Kassettenrecorders mit einem ESP32, RFID-Karten und einem DFPlayer Mini. Die ursprünglichen Bedienelemente des Recorders werden soweit möglich weiterverwendet – im Inneren arbeitet heute jedoch ein vollständig digitaler Audioplayer.
@@ -68,11 +70,13 @@ erhalten.
 
 ### Details des mechanischen Umbaus
 
+![Hall-Sensor und originaler Kontaktschalter](images/Kontakt.png)
+
 Der originale Kontaktschalter der Recordermechanik dient weiterhin für
 START/STOP. Die beiden Hall-Sensoren und kleinen Magnete erfassen VOR- und
-RÜCKSPULEN berührungslos. Ein Detailfoto wird erst ergänzt, sobald die dafür
-vorgesehene Datei `kontakte.png` verfügbar ist; das README enthält bis dahin
-bewusst keinen Bildlink.
+RÜCKSPULEN berührungslos. Der kleine runde Magnetträger für die
+Vorwärts-Erkennung stammt aus einem alten Kopfhörer und passte mechanisch sehr
+gut in den vorhandenen Mechanismus.
 
 ---
 
