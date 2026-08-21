@@ -33,6 +33,10 @@ public:
   void handleRoot();
   void handleStatus();
   void handleLogs();
+  void handlePlayerStart();
+  void handlePlayerPause();
+  void handlePlayerPrevious();
+  void handlePlayerNext();
   void log(const String& line);
 
 private:
@@ -60,4 +64,6 @@ private:
   void startNetworkServices();
   void updateLogStream();
   void sendLogStreamLine(const String& line);
+  void sendPlayerActionResult(int statusCode, const String& message);
+  void logPlayerAction(const String& message);
 };

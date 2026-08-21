@@ -340,7 +340,7 @@ void applyVolume() {
 
   lastVolume = volume;
   lastDfVolume = dfVolume;
-  audioPlayer.setVolume(volume, dfVolume);
+  audioPlayer.setVolume(volume, dfVolume, filteredVolumeRaw);
   noteRelevantActivity();
   String volumeLog = "[VOLUME] RAW=" + String(filteredVolumeRaw) +
                      " -> DF " + String(audioPlayer.getMappedDfVolume()) +
@@ -655,14 +655,6 @@ void startActiveCardPlayback() {
   String startLabel = playStartCount == 1 ? "erster START" : String(playStartCount) + ". START";
   Serial.println("[PLAY] " + startLabel + " -> neuer Play-Befehl");
   logWeb("[PLAY] " + startLabel + " -> neuer Play-Befehl");
-  audioPlayer.setVolume(lastVolume, lastDfVolume);
-  String cachedVolumeLog = "[VOLUME] RAW=" + String(filteredVolumeRaw) +
-                           " -> DF " + String(audioPlayer.getMappedDfVolume()) +
-                           "/30 (vor Folderstart, direkt aus RAW, logical " +
-                           String(lastVolume) + "/10)";
-  Serial.println(cachedVolumeLog);
-  logWeb(cachedVolumeLog);
-  delay(DF_VOLUME_COMMAND_SETTLE_MS);
   Serial.println("[DFPLAYER] playFolder(" + String(currentFolder) + ", " +
                  String(startTrack) + ")");
   logWeb("[DFPLAYER] playFolder(" + String(currentFolder) + ", " +
@@ -1085,7 +1077,7 @@ void NormalMode::begin(bool maintenanceMode, bool bootButtonMustBeReleased) {
     pendingDfVolume = initialDfVolume;
     pendingVolumeChangedAt = millis();
     lastVolumePollAt = millis();
-    audioPlayer.setVolume(initialVolume, initialDfVolume);
+    audioPlayer.setVolume(initialVolume, initialDfVolume, initialRaw);
     delay(DF_VOLUME_COMMAND_SETTLE_MS);
     initialDfVolumeApplied = true;
     String initialPotiLog = "[POTI] RAW=" + String(initialRaw) +
@@ -1136,7 +1128,7 @@ void NormalMode::update() {
     lastDfVolume = recoveredDfVolume;
     pendingVolume = recoveredVolume;
     pendingDfVolume = recoveredDfVolume;
-    audioPlayer.setVolume(recoveredVolume, recoveredDfVolume);
+    audioPlayer.setVolume(recoveredVolume, recoveredDfVolume, recoveredRaw);
     delay(DF_VOLUME_COMMAND_SETTLE_MS);
     initialDfVolumeApplied = true;
     Serial.println("[NORMAL] DFPlayer-Recovery erfolgreich");

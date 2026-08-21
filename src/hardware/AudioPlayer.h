@@ -41,7 +41,7 @@ public:
   void resume();
   void next();
   void previous();
-  void setVolume(uint8_t logicalVolume, uint8_t dfVolume);
+  void setVolume(uint8_t logicalVolume, uint8_t dfVolume, int rawVolume);
   uint8_t getMappedDfVolume() const;
   AudioPlayerStatus readStatus();
   AudioPlayerStatus getCachedStatus() const;
@@ -54,6 +54,7 @@ private:
   static constexpr unsigned long DUPLICATE_FINISH_WINDOW_MS = 500;
   static constexpr unsigned long POWERUP_STABILIZATION_MS = 1500;
   static constexpr unsigned long INITIALIZATION_RETRY_MS = 750;
+  static constexpr unsigned long VOLUME_COMMAND_SETTLE_MS = 120;
   static constexpr uint8_t MAX_INITIALIZATION_ATTEMPTS = 3;
   // The real module reports an unreliable folder count. Keep the synchronous
   // query out of the latency-sensitive playback start path.
@@ -74,6 +75,7 @@ private:
   int tracksInFolder = 0;
   uint8_t currentVolume = 0;
   uint8_t currentDfVolume = 0;
+  int currentVolumeRaw = -1;
   unsigned long trackStartedAt = 0;
   uint16_t trackElapsedBeforePause = 0;
   String statusText = "DFPlayer nicht gestartet";
@@ -87,6 +89,7 @@ private:
   unsigned long lastAcceptedFinishAt = 0;
 
   void startFolderTrack(uint8_t folder, uint8_t track, const char* source);
+  void prepareVolumeForFolderStart();
   bool tryInitialize();
   void logInitialization(const String& line) const;
   void logPlayback(const String& line) const;

@@ -14,6 +14,7 @@ bool AudioPlayer::begin() {
   currentFolder = 0;
   currentTrack = 0;
   tracksInFolder = 0;
+  currentVolumeRaw = -1;
   trackStartedAt = 0;
   trackElapsedBeforePause = 0;
   playbackGeneration = 0;
@@ -154,6 +155,7 @@ void AudioPlayer::playFolder(uint8_t folder, const char* source) {
   }
 
   folderPlaybackActive = true;
+  prepareVolumeForFolderStart();
   startFolderTrack(folder, 1, source);
 }
 
@@ -181,6 +183,7 @@ void AudioPlayer::playFolderTrack(uint8_t folder, uint8_t track, const char* sou
   }
 
   folderPlaybackActive = true;
+  prepareVolumeForFolderStart();
   startFolderTrack(folder, track, source);
 }
 
@@ -270,13 +273,14 @@ void AudioPlayer::previous() {
   trackElapsedBeforePause = 0;
 }
 
-void AudioPlayer::setVolume(uint8_t logicalVolume, uint8_t dfVolume) {
+void AudioPlayer::setVolume(uint8_t logicalVolume, uint8_t dfVolume, int rawVolume) {
   if (!ready) return;
 
   constexpr uint8_t LOGICAL_MAX_VOLUME = 10;
   constexpr uint8_t DFPLAYER_MAX_VOLUME = 30;
   currentVolume = constrain(logicalVolume, static_cast<uint8_t>(0), LOGICAL_MAX_VOLUME);
   currentDfVolume = constrain(dfVolume, static_cast<uint8_t>(0), DFPLAYER_MAX_VOLUME);
+  currentVolumeRaw = rawVolume;
   dfPlayer.volume(currentDfVolume);
 }
 
@@ -285,7 +289,7 @@ uint8_t AudioPlayer::getMappedDfVolume() const {
 }
 
 void AudioPlayer::logPlayback(const String& line) const {
-  String message = "[DFPLAYER] " + line;
+  String message = "[PLAYER] " + line;
   Serial.println(message);
   if (logCallback) {
     logCallback(message);
@@ -331,6 +335,18 @@ String AudioPlayer::getStatusText() const {
   return statusText;
 }
 
+void AudioPlayer::prepareVolumeForFolderStart() {
+  dfPlayer.volume(currentDfVolume);
+  String message = "[VOLUME] Vor neuem Folderstart RAW=" +
+                   String(currentVolumeRaw) + " -> DF " +
+                   String(currentDfVolume) + "/30";
+  Serial.println(message);
+  if (logCallback) {
+    logCallback(message);
+  }
+  delay(VOLUME_COMMAND_SETTLE_MS);
+}
+
 void AudioPlayer::startFolderTrack(uint8_t folder, uint8_t track, const char* source) {
   unsigned long now = millis();
   uint8_t previousFolder = currentFolder;
@@ -343,8 +359,8 @@ void AudioPlayer::startFolderTrack(uint8_t folder, uint8_t track, const char* so
   Serial.printf("[%lu] DF TX PLAY source=%s folder=%u track=%u previous=%u/%u generation=%lu\n",
                 now, source, folder, track, previousFolder, previousTrack,
                 static_cast<unsigned long>(playbackGeneration));
-  logPlayback("t=" + String(now) + "ms TX playFolder(" + String(folder) +
-              ", " + String(track) + ") source=" + source);
+  logPlayback("TX playFolder(" + String(folder) + "," + String(track) +
+              ") source=" + source);
   dfPlayer.playFolder(folder, track);
   currentFolder = folder;
   currentTrack = track;
