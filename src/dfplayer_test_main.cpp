@@ -7,18 +7,19 @@
 #include <math.h>
 
 #include "secrets.h"
+#include "hardware/HardwarePins.h"
 
 namespace {
 
-constexpr uint8_t DF_RX_PIN = 16;
-constexpr uint8_t DF_TX_PIN = 17;
-constexpr uint8_t VOL_PIN = 34;
-constexpr uint8_t GPIO32_TEST_PIN = 32;
-constexpr uint8_t RFID_SS_PIN = 5;
-constexpr uint8_t RFID_RST_PIN = 22;
-constexpr uint8_t RFID_SCK_PIN = 18;
-constexpr uint8_t RFID_MISO_PIN = 19;
-constexpr uint8_t RFID_MOSI_PIN = 23;
+constexpr uint8_t DF_RX_PIN = HardwarePins::DFPLAYER_RX;
+constexpr uint8_t DF_TX_PIN = HardwarePins::DFPLAYER_TX;
+constexpr uint8_t VOL_PIN = HardwarePins::VOLUME;
+constexpr uint8_t GPIO32_TEST_PIN = HardwarePins::STATUS_LED;
+constexpr uint8_t RFID_SS_PIN = HardwarePins::RFID_SS;
+constexpr uint8_t RFID_RST_PIN = HardwarePins::RFID_RST;
+constexpr uint8_t RFID_SCK_PIN = HardwarePins::RFID_SCK;
+constexpr uint8_t RFID_MISO_PIN = HardwarePins::RFID_MISO;
+constexpr uint8_t RFID_MOSI_PIN = HardwarePins::RFID_MOSI;
 constexpr unsigned long RFID_POLL_MS = 250;
 constexpr unsigned long RFID_REPEAT_LOG_MS = 3000;
 constexpr int VOL_RAW_MIN = 2;

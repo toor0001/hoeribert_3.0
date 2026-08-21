@@ -11,4 +11,5 @@ public:
 
 private:
   NormalMode normalMode;
+  bool maintenanceMode = false;
 };

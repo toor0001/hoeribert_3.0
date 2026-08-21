@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <MFRC522.h>
+#include "HardwarePins.h"
 
 struct TonuinoCardData {
   bool valid = false;
@@ -33,17 +34,18 @@ public:
   String getLastError() const;
   String getReaderVersionText() const;
   bool isReaderConnected() const;
+  void powerDown();
   bool hasLastRawData() const;
   void copyLastRawData(byte* data, size_t maxLength) const;
   int getDebugLineCount() const;
   String getDebugLine(int index) const;
 
 private:
-  static constexpr uint8_t RFID_SS_PIN   = 5;
-  static constexpr uint8_t RFID_RST_PIN  = 22;
-  static constexpr uint8_t RFID_SCK_PIN  = 18;
-  static constexpr uint8_t RFID_MISO_PIN = 19;
-  static constexpr uint8_t RFID_MOSI_PIN = 23;
+  static constexpr uint8_t RFID_SS_PIN   = HardwarePins::RFID_SS;
+  static constexpr uint8_t RFID_RST_PIN  = HardwarePins::RFID_RST;
+  static constexpr uint8_t RFID_SCK_PIN  = HardwarePins::RFID_SCK;
+  static constexpr uint8_t RFID_MISO_PIN = HardwarePins::RFID_MISO;
+  static constexpr uint8_t RFID_MOSI_PIN = HardwarePins::RFID_MOSI;
   static constexpr int RAW_DATA_LENGTH = 16;
   static constexpr int BUFFER_LENGTH = 18;
   static constexpr int MAX_DEBUG_LINES = 16;

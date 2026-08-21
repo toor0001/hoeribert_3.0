@@ -4,7 +4,75 @@
 
 Höribert 3.0 verbindet die Haptik eines alten Kassettenrecorders mit einem ESP32, RFID-Karten und einem DFPlayer Mini. Die ursprünglichen Bedienelemente des Recorders werden soweit möglich weiterverwendet – im Inneren arbeitet heute jedoch ein vollständig digitaler Audioplayer.
 
-Der aktuelle Aufbau verwendet einen **Lolin32 Lite**, einen **DFPlayer Mini**, einen **RC522 RFID-Reader** und eine **18650-Zelle**. Die Firmware basiert auf Arduino/PlatformIO und unterstützt zusätzlich WLAN, OTA-Updates, eine Live-Log-Konsole und mehrere Hardware-Test-Firmwares.
+Der aktuelle Aufbau verwendet einen **Lolin32 Lite**, einen **DFPlayer Mini**, einen **RC522 RFID-Reader** und eine **18650-Zelle**. WLAN, Webdiagnose und OTA sind ausschließlich im bewusst gewählten Wartungsmodus aktiv.
+
+Die Firmware und diese Dokumentation entstanden iterativ im „Vibe-Coding“-Stil
+mit Unterstützung von **ChatGPT und OpenAI Codex**. Schaltung, Pinbelegung,
+mechanischer Aufbau, Anforderungen und Tests am realen Gerät wurden dabei vom
+Projektinhaber festgelegt und geprüft; KI-generierte Änderungen ersetzen keine
+Erprobung an der konkreten Hardware.
+
+## 📼 Idee und RFID-Hörspielkassette
+
+Das Bedienkonzept soll sich weiterhin möglichst wie ein Kassettenrecorder aus den
+1980er-Jahren anfühlen. Deshalb wird die RFID-Karte nicht lose auf den Reader
+gelegt: Eine originale Hörspielkassette wurde ausgehöhlt, sodass eine RFID-Karte
+in die Kassette eingeschoben werden kann.
+
+Der Ablauf bleibt bewusst mechanisch:
+
+```text
+Hörspielkassette auswählen
+→ RFID-Karte in die Kassette einschieben
+→ Kassette in den ITT SL59 einlegen
+→ PLAY drücken
+→ Hörspiel startet
+```
+
+Der im Recorder montierte RC522 erkennt die Karte innerhalb der Kassette. Die
+RFID-Erkennung allein startet noch keine Wiedergabe; dafür muss die originale
+PLAY-Mechanik betätigt werden. So verbindet der Umbau moderne ESP32-/RFID-Technik
+mit der ursprünglichen Haptik des Recorders.
+
+## 🔧 Umbau des ITT SL59
+
+![Geöffneter ITT SL59 mit eingebauter Höribert-3.0-Elektronik](images/itt.jpg)
+
+*Gesamtansicht des geöffneten ITT SL59 nach dem Umbau.*
+
+Um Platz für die neue Elektronik zu schaffen, wurden der originale Motor, das
+originale Netzteil und die originale Verstärkerplatine entfernt. Der originale
+Lautsprecher wird weiterverwendet und ist direkt zwischen den
+DFPlayer-Ausgängen **SPK1 und SPK2** verbunden. SPK1 und SPK2 dürfen nicht gegen
+GND verdrahtet werden.
+
+Auch das originale Lautstärkepotentiometer bleibt erhalten. Der ESP32 wertet
+dessen Stellung über GPIO34 aus und setzt sie in logische Lautstärkestufen um.
+
+Im Batteriefach befindet sich ein von außen zugänglicher 18650-Li-Ion-Akku.
+Akkuhalterung und Laderegler wurden unverändert aus einer kleinen Powerbank
+übernommen. Der Akku wird über diese Ladeelektronik und eine auf der Rückseite
+eingebaute Micro-USB-Buchse geladen. Diese externe Recorder-Buchse dient nur zum
+Laden, nicht als Daten- oder Firmwareanschluss. Ebenfalls auf der Rückseite befinden sich
+der Ein-/Ausschalter und der Multifunktionstaster GPIO25. Über unbekannte
+Schutzfunktionen oder Ladeströme der übernommenen Elektronik werden keine
+Annahmen getroffen.
+
+## ⏯️ Originale Mechanik und Sensorik
+
+Die originale mechanische Tastenmechanik wurde bewusst erhalten. START/STOP
+verwendet den vorhandenen originalen Kontaktschalter, den der ESP32 direkt
+auswertet. Für VORSPULEN und RÜCKSPULEN wurden kleine Magnete und Hall-Sensoren
+ergänzt; die mechanischen Tasten selbst und damit ihr Bediengefühl bleiben
+erhalten.
+
+### Details des mechanischen Umbaus
+
+Der originale Kontaktschalter der Recordermechanik dient weiterhin für
+START/STOP. Die beiden Hall-Sensoren und kleinen Magnete erfassen VOR- und
+RÜCKSPULEN berührungslos. Ein Detailfoto wird erst ergänzt, sobald die dafür
+vorgesehene Datei `kontakte.png` verfügbar ist; das README enthält bis dahin
+bewusst keinen Bildlink.
 
 ---
 
@@ -18,8 +86,8 @@ Der aktuelle Aufbau verwendet einen **Lolin32 Lite**, einen **DFPlayer Mini**, e
 - ⏲️ Sleep-Timer in 10-Minuten-Schritten
 - 💡 Status-LED zur Rückmeldung
 - 💾 lokale Bookmark-Infrastruktur im ESP32-NVS
-- 📡 WLAN für Diagnose und Wartung
-- 🔄 OTA-Firmwareupdates
+- 📡 optionaler Wartungsmodus mit WLAN und Browserdiagnose
+- 🔄 OTA-Firmwareupdates nur im Wartungsmodus
 - 🖥️ serielle Diagnose mit 115200 Baud
 - 📟 Live-Logstream über TCP Port `2323`
 - 🧪 separate Test-Firmwares für RFID, DFPlayer und GPIO-Funktionen
@@ -66,9 +134,6 @@ Lautsprecher
 | Hall-/Schaltsignale | Vor / Zurück / Play-Pause |
 | Status-LED | optische Rückmeldung |
 
-> [!NOTE]
-> Ältere Dateien und Kommentare im Repository enthalten teilweise noch die Bezeichnung **ITT SL58**. Der aktuell verwendete Recorder ist ein **ITT SL59**.
-
 ---
 
 ## 🔌 Pinbelegung der aktuellen Firmware
@@ -106,11 +171,10 @@ Für die Verbindung **ESP32 TX → DFPlayer RX** wird im Aufbau ein Serienwiders
 | Play/Pause | GPIO 26 | aktiv gegen GND |
 | Vor | GPIO 14 | nächster Track |
 | Zurück | GPIO 13 | vorheriger Track |
-| Sleep-Timer | GPIO 25 | kurzer / langer Tastendruck |
+| Sleep-Timer / Wartungswahl | GPIO 25 | beim Boot LOW: Wartungsmodus; danach kurzer / langer Tastendruck |
 | Status-LED | GPIO 32 | kurze optische Rückmeldung |
 
-> [!WARNING]
-> `test/DOKU` enthält teilweise noch ältere RC522-Pinbelegungen. Für den aktuellen Stand gelten die Pins aus `src/hardware/RFIDManager.h` bzw. die Tabelle oben.
+Alle produktiven Pins sind zentral in `src/hardware/HardwarePins.h` definiert.
 
 ---
 
@@ -150,11 +214,41 @@ Mode 2 = Album / Ordner
 
 Andere TonUINO-Modi werden erkannt, aber derzeit nicht abgespielt.
 
+### RFID-Karten vorbereiten
+
+Höribert ist ausschließlich ein **Kartenleser**. Die Firmware besitzt keinen
+Schreib- oder Administrationsmodus. Karten müssen vorher mit einem
+TonUINO-kompatiblen Kartenwerkzeug oder mit der Kartenkonfiguration eines
+originalen TonUINO vorbereitet werden. Die fertige Karte wird anschließend in
+die ausgehöhlte Hörspielkassette eingeschoben.
+
+Das von Höribert gelesene Datenformat liegt bei MIFARE Classic in Block 4. Bei
+unterstützten Ultralight-Tags sucht die Firmware ab Seite 4 nach dem Cookie
+(TonUINO-TNG legt die Nutzdaten üblicherweise ab Seite 8 ab):
+
+| Byte | Inhalt | Von Höribert verwendet |
+|---:|---|---|
+| 0–3 | Magic Cookie `13 37 B3 47` | Prüfung der Kompatibilität |
+| 4 | Formatversion | Diagnose |
+| 5 | Ordner `1`–`99` | Auswahl des SD-Ordners |
+| 6 | Modus | derzeit muss dies `2` sein |
+| 7 | Special | wird gelesen, derzeit nicht ausgewertet |
+| 8 | Special 2 | wird gelesen, derzeit nicht ausgewertet |
+
+MIFARE-Classic-Karten werden mit dem üblichen Default-Key
+`FF FF FF FF FF FF` authentifiziert. Karten mit abweichenden Schlüsseln kann
+Höribert nicht lesen. Vor dem Einbau in eine Kassette sollte jede Karte mit der
+RFID-Diagnosefirmware geprüft werden.
+
 ---
 
-## 🎵 Struktur der microSD-Karte
+## 🎵 microSD-Karte vorbereiten
 
-Der DFPlayer verwendet seine normale Ordner-/Track-Struktur. Eine RFID-Karte verweist auf die entsprechende Ordnernummer.
+Eine microSD-Karte mit **FAT16 oder FAT32 und höchstens 32 GB** verwenden. Für
+einen reproduzierbaren Aufbau die Karte frisch formatieren und Ordner sowie
+Dateien sauber nummeriert kopieren. Der DFPlayer arbeitet mit Ordnern `01` bis
+`99` und Dateien `001.mp3` bis `255.mp3`; eine RFID-Karte verweist mit Byte 5
+auf die entsprechende Ordnernummer.
 
 Beispiel:
 
@@ -166,9 +260,28 @@ Beispiel:
 /02/001.mp3
 /02/002.mp3
 ...
+
+/35/001.mp3
+/35/002.mp3
 ```
 
-Die Firmware enthält aktuell Namen für die Hörspielordner `1` bis `99` und zeigt diese in Diagnoseausgaben entsprechend an.
+Die Firmware enthält aktuell Namen für die Hörspielordner `1` bis `99` und zeigt
+diese in Diagnoseausgaben entsprechend an. Die DFRobot-Dokumentation garantiert
+keine bestimmte Kopierreihenfolge. Bei unerwarteter Wiedergabereihenfolge die
+Karte deshalb frisch formatieren und die sauber nummerierten Dateien in der
+gewünschten Reihenfolge neu kopieren.
+
+### RC522: Aufbau und Fehlersuche
+
+- Den RC522 ausschließlich mit **3,3 V** betreiben; `IRQ` bleibt unbeschaltet.
+- Leitungen kurz, sauber und mit gemeinsamer Masse führen. Der Leseabstand ist
+  klein; Karte und Antenne möglichst nahe und parallel zueinander platzieren.
+- Die Qualität verschiedener RC522-Platinen und Karten schwankt. Bei instabiler
+  Erkennung zunächst Versorgung, Kontakte, Leitungsführung und Abstand prüfen.
+- Ein Versionsregister wie `0x92` ist bei einem MFRC522 plausibel. `0x00` oder
+  `0xFF` deutet typischerweise auf Versorgung-, Verdrahtungs- oder SPI-Probleme.
+- `platformio.ini` setzt `MFRC522_SPICLOCK=1000000` und reduziert den SPI-Takt
+  damit bewusst auf 1 MHz. Das erhöht bei der realen Verdrahtung die Robustheit.
 
 ---
 
@@ -194,7 +307,32 @@ Der Taster an **GPIO 25** steuert den Sleep-Timer:
 - **weiterer kurzer Druck:** nochmals +10 Minuten
 - **langer Tastendruck ab ca. 1,2 s:** Timer löschen
 
-Nach Ablauf wird die aktuelle Position gespeichert und die Wiedergabe gestoppt.
+Nach Ablauf wird die aktuelle Position gespeichert. Anschließend werden DFPlayer,
+RC522, WLAN und Wartungsdienste soweit softwareseitig möglich heruntergefahren und
+der ESP32 wechselt in Deep Sleep.
+
+Deep Sleep wird außerdem ausgelöst, wenn ein Hörspielordner vollständig beendet
+ist oder zehn Minuten lang keine Wiedergabe aktiv war. Das umfasst den Leerlauf
+ohne Karte, das Warten auf PLAY nach erkannter Karte und eine zehn Minuten lang
+nicht fortgesetzte Pause. Aktive Wiedergabe sowie relevante Bedien- und
+Playback-Aktionen setzen die Inaktivitätszeit zurück. Bei einem vollständig
+beendeten Ordner wird dessen Bookmark vor dem Schlafen gelöscht.
+
+Zum Aufwecken GPIO25 kurz drücken. Ein EXT0-Wakeup über GPIO25 startet immer den
+normalen Playerbetrieb mit ausgeschaltetem WLAN und wird nicht als Wartungsstart
+gewertet. Nur wenn GPIO25 bei einem Kaltstart oder normalen Reset gedrückt ist,
+wird der Wartungsmodus gewählt. Der Wakeup-Tastendruck wird bis zum ersten
+Loslassen von der Sleep-Timer-Logik ignoriert.
+
+Nach dem Aufwecken startet keine Wiedergabe automatisch: Karte und PLAY sind
+weiterhin erforderlich. Hauptschalter AUS/EIN ist ein normaler Kaltstart.
+
+Vor Deep Sleep sendet die Firmware dem DFPlayer den Sleep-Befehl und versetzt den
+RC522 mit ausgeschalteter Antenne in SoftPowerDown. Ohne schaltbare
+Versorgungsleitungen bleiben beide Module dennoch elektrisch am Akku. Auch
+Spannungsregler, Ladeelektronik und LEDs des LOLIN32-Lite können weiterhin Strom
+verbrauchen; ESP32-Deep-Sleep allein garantiert daher keinen minimalen
+Gesamtruhestrom des Geräts.
 
 ---
 
@@ -210,17 +348,34 @@ Positionen werden unter anderem beim
 
 gespeichert.
 
-**Aktueller Entwicklungsstand:** Das automatische Fortsetzen einer später erneut aufgelegten Karte ist noch nicht vollständig in den Wiedergabestart eingebunden. Der normale Kartenstart beginnt derzeit wieder bei **Track 1**.
+Beim erneuten Erkennen derselben Karte lädt die Firmware den Bookmark für UID und
+Ordner. Die Wiedergabe beginnt am Anfang des gespeicherten Tracks. Die ebenfalls
+gespeicherten Sekunden dienen nur als Diagnosewert; ein unzuverlässiges Seeking
+innerhalb einer MP3-Datei wird bewusst nicht versucht. Nach vollständig
+abgespieltem Ordner wird der Bookmark gelöscht.
 
 ---
 
 ## 📡 WLAN, OTA und Live-Diagnose
 
-Höribert verbindet sich beim Start mit dem konfigurierten WLAN. Darüber stehen aktuell vor allem Wartungs- und Diagnosefunktionen zur Verfügung.
+Im normalen Betrieb bleibt das ESP32-WLAN vollständig ausgeschaltet. Dadurch gibt es
+keine WLAN-Wartezeit und RFID, DFPlayer und Bedienelemente starten direkt.
+
+Für den Wartungsmodus den hinteren Taster **GPIO25 beim Einschalten oder Reset
+gedrückt halten**. GPIO25 ist mit `INPUT_PULLUP` beschaltet und bei gedrücktem
+Taster LOW. Der beim Boot erkannte Modus bleibt bis zum nächsten Neustart aktiv.
+Nach dem ersten Loslassen arbeitet derselbe Taster wieder normal als Sleep-Timer;
+der Boot-Tastendruck löst keine Timeraktion aus.
+
+Im Wartungsmodus verbindet sich Höribert nicht blockierend mit dem konfigurierten
+WLAN. Ist das WLAN nicht erreichbar, läuft der Player ohne Web/OTA weiter.
 
 ### OTA
 
-ArduinoOTA wird automatisch gestartet, sobald die WLAN-Verbindung hergestellt wurde.
+ArduinoOTA wird im Wartungsmodus gestartet, sobald die WLAN-Verbindung hergestellt
+wurde. Der bewusst beibehaltene Standardhostname aus `secrets.example.h` ist
+`itt-sl58`, entsprechend ist das OTA-Ziel `itt-sl58.local`. Die Bezeichnung ist
+ein absichtlicher Hostname und ändert nichts daran, dass das Gerät ein ITT SL59 ist.
 
 Die PlatformIO-Konfiguration enthält sowohl USB- als auch OTA-Umgebungen.
 
@@ -236,15 +391,16 @@ Bis zu zwei Log-Clients können gleichzeitig verbunden sein.
 
 ### Webinterface
 
-Im Repository ist bereits ein umfangreiches, optisch an den Recorder angelehntes Webinterface implementiert.
+Die technische Statusseite ist im Wartungsmodus unter
+`http://itt-sl58.local/` beziehungsweise unter der im seriellen Log gemeldeten
+IP-Adresse erreichbar. Sie zeigt System-, WLAN-, RFID-, DFPlayer-, Player- und
+GPIO-Zustände sowie die letzten 100 Diagnosezeilen. Die Anzeige aktualisiert sich
+alle 1,5 Sekunden. Im Normalbetrieb laufen weder HTTP-Server noch OTA oder
+TCP-Logserver.
 
-**Im aktuellen Firmwarestand ist der HTTP-Server jedoch absichtlich deaktiviert:**
-
-```cpp
-constexpr bool HTTP_SERVER_ENABLED = false;
-```
-
-WLAN, OTA und der Live-Logstream funktionieren davon unabhängig weiter.
+Webseite, TCP-Log und OTA besitzen keine eigene Anmeldung. Den Wartungsmodus
+daher nur in einem vertrauenswürdigen lokalen Netz verwenden und nach der
+Wartung normal neu starten. Im Normalmodus sind diese Netzwerkdienste aus.
 
 ---
 
@@ -285,10 +441,13 @@ src/
     ├── RFIDManager.h
     ├── WebServerManager.cpp
     ├── WebServerManager.h
-    └── WebAssets.h
+    ├── PowerManager.cpp
+    ├── PowerManager.h
+    └── HardwarePins.h
 ```
 
-Die frühere HardwareTestMode-/Display-/IR-Struktur wurde inzwischen entfernt. Hardwaretests liegen heute als separate Build-Ziele vor.
+Hardwaretests liegen als separate Build-Ziele vor und werden nicht in die
+produktive Firmware gelinkt.
 
 ---
 
@@ -311,6 +470,39 @@ Das Standardziel ist aktuell:
 ```ini
 default_envs = esp32dev_ota
 ```
+
+### Diagnose bauen und starten
+
+```bash
+# RC522, Kartentyp, UID und Rohdaten prüfen
+pio run -e dumpinfo_usb -t upload
+
+# DFPlayer, Lautstärke und Wiedergabe isoliert prüfen
+pio run -e dfplayer_test_usb -t upload
+
+# Taster, Hall-Sensoren, Poti, LED und RC522 prüfen
+pio run -e gpio_function_test_usb -t upload
+
+# Danach serielle Ausgabe öffnen
+pio device monitor --baud 115200
+
+# Normale Firmware per USB
+pio run -e esp32dev_usb -t upload
+
+# Normale Firmware per OTA (Gerät zuvor im Wartungsmodus starten)
+pio run -e esp32dev_ota -t upload
+```
+
+Vor dem Flashen der normalen Firmware sind mindestens Reader-Version,
+TonUINO-Cookie, Ordner/Modus, DFPlayer-Kommunikation und alle GPIO-Zustände zu
+kontrollieren. Beim getesteten Reader erscheint beispielsweise `RC522=0x92`;
+bei einer Karte folgen UID, SAK, Kartentyp und gegebenenfalls der gefundene
+TonUINO-Cookie. Die Testfirmware `dfplayer_test_usb` verwendet für einige ihrer
+eigenen Testtaster absichtlich eine abweichende Laborbelegung; die produktive
+Belegung steht oben in der Pin-Tabelle.
+
+Für die Browserdiagnose GPIO25 beim Kaltstart gedrückt halten. Danach stehen im
+Wartungsnetz `http://itt-sl58.local/`, Status, Live-Log und OTA bereit.
 
 ---
 
@@ -348,7 +540,8 @@ pio run -e esp32dev_ota -t upload
 ```
 
 > [!NOTE]
-> Das in `platformio.ini` eingetragene OTA-Ziel ist momentan `noxon.local`. Falls dein Gerät unter einem anderen Hostnamen erreichbar ist, muss `upload_port` entsprechend angepasst oder die IP-Adresse verwendet werden.
+> Das in `platformio.ini` eingetragene OTA-Ziel ist `itt-sl58.local`. Vor einem
+> OTA-Upload muss Höribert durch gedrücktes GPIO25 im Wartungsmodus gestartet sein.
 
 ---
 
@@ -369,7 +562,8 @@ Danach anpassen:
 
 constexpr const char* WIFI_SSID = "dein-wlan-name";
 constexpr const char* WIFI_PASS = "dein-wlan-passwort";
-constexpr const char* OTA_NAME = "hoeribert";
+constexpr const char* OTA_NAME = "itt-sl58";
+constexpr const char* DEVICE_NAME = "Hoeribert 3.0";
 ```
 
 `include/secrets.h` ist über `.gitignore` ausgeschlossen.
@@ -413,18 +607,52 @@ Höribert 3.0 ist ein aktiv weiterentwickeltes DIY-Projekt.
 - Sleep-Timer
 - Status-LED
 - lokale Bookmark-Speicherung
-- WLAN
-- OTA
+- Wartungsmodus mit WLAN, Webdiagnose und OTA
 - TCP-Live-Logs
 - USB-/OTA-Testfirmwares
 
 ### Noch in Arbeit / vorbereitet
 
-- vollständiges Wiederaufnehmen gespeicherter Bookmarks
 - weitere TonUINO-Modi
-- Reaktivierung und Fertigstellung des Webinterfaces
-- Bereinigung verbliebener `SL58`-/`noxon`-Legacy-Bezeichnungen
-- Abgleich bzw. Bereinigung älterer Testdokumentation
+- optionaler Hardwaretest mit einem **2,2-Ohm-Leistungswiderstand in Reihe zum
+  Lautsprecher**, falls die Gesamtlautstärke später noch reduziert werden soll;
+  der Lautsprecher bleibt dabei zwischen DFPlayer **SPK1 und SPK2**, beide
+  Anschlüsse dürfen nicht gegen GND verdrahtet werden
+
+---
+
+## 🧬 Vorgängerprojekt Höribert 2.0
+
+[Höribert 2.0](https://github.com/toor0001/Hoeribert-2.0) ist der direkte
+Software-Vorgänger dieses Projekts. Höribert 3.0 wurde für den aktuellen
+Lolin32-Lite-/RC522-/DFPlayer-Aufbau, die originale SL59-Mechanik und den
+Wartungsmodus weiterentwickelt; der Vorgänger nutzt ein anderes Gehäuse und
+einen anderen Hardwarestand. Die Projekte sind daher kein 1:1-Port und ihre
+Pinbelegungen nicht austauschbar. Einzelne bewährte Softwarelösungen wurden
+übernommen und weiterentwickelt. Insbesondere behandelt 3.0 doppelte
+DFPlayer-`PlayFinished`-Meldungen explizit, damit ein einzelnes Titelende nicht
+mehr zum Überspringen des folgenden Titels führt.
+
+## 🙏 Credits, Inspiration und Kompatibilität
+
+Das RFID-Hörspielkonzept und das Kartenformat wurden durch das
+[TonUINO-Projekt](https://tonuino.de/) von **Thorsten Voß** inspiriert. Nützliche
+Referenzen sind die [aktuelle TonUINO-TNG-Firmware](https://github.com/tonuino/TonUINO-TNG)
+und das [historische TonUINO-Repository](https://github.com/xfjx/TonUINO).
+Höribert ist ein unabhängiges DIY-Projekt, keine offizielle TonUINO-Firmware und
+derzeit nur mit Kartenmodus 2 kompatibel.
+
+Wesentliche externe Software:
+
+- [Höribert 2.0](https://github.com/toor0001/Hoeribert-2.0) als direkter
+  Software-Vorgänger
+- [Arduino-ESP32](https://github.com/espressif/arduino-esp32) als Framework
+- [miguelbalboa/rfid](https://github.com/miguelbalboa/rfid) für den MFRC522
+  (Unlicense/Public Domain)
+- [DFRobotDFPlayerMini](https://github.com/DFRobot/DFRobotDFPlayerMini) für den
+  DFPlayer Mini (GNU LGPL)
+
+Der eigene Höribert-Quellcode steht unter der MIT-Lizenz in `LICENSE`.
 
 ---
 

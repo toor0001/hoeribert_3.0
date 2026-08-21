@@ -5,22 +5,23 @@
 #include <WiFi.h>
 
 #include "secrets.h"
+#include "hardware/HardwarePins.h"
 
 namespace {
 
-constexpr uint8_t VOL_PIN = 34;
-constexpr uint8_t PLAY_BUTTON_PIN = 26;
-constexpr uint8_t BTN_FORWARD_PIN = 14;
-constexpr uint8_t BTN_BACK_PIN = 13;
-constexpr uint8_t TIMER_BUTTON_PIN = 25;
-constexpr uint8_t STATUS_LED_PIN = 32;
+constexpr uint8_t VOL_PIN = HardwarePins::VOLUME;
+constexpr uint8_t PLAY_BUTTON_PIN = HardwarePins::PLAY_BUTTON;
+constexpr uint8_t BTN_FORWARD_PIN = HardwarePins::FORWARD_BUTTON;
+constexpr uint8_t BTN_BACK_PIN = HardwarePins::BACK_BUTTON;
+constexpr uint8_t TIMER_BUTTON_PIN = HardwarePins::TIMER_BUTTON;
+constexpr uint8_t STATUS_LED_PIN = HardwarePins::STATUS_LED;
 constexpr uint8_t GPIO35_TEST_PIN = 35;
 
-constexpr uint8_t RFID_SS_PIN = 5;
-constexpr uint8_t RFID_RST_PIN = 22;
-constexpr uint8_t RFID_SCK_PIN = 18;
-constexpr uint8_t RFID_MISO_PIN = 19;
-constexpr uint8_t RFID_MOSI_PIN = 23;
+constexpr uint8_t RFID_SS_PIN = HardwarePins::RFID_SS;
+constexpr uint8_t RFID_RST_PIN = HardwarePins::RFID_RST;
+constexpr uint8_t RFID_SCK_PIN = HardwarePins::RFID_SCK;
+constexpr uint8_t RFID_MISO_PIN = HardwarePins::RFID_MISO;
+constexpr uint8_t RFID_MOSI_PIN = HardwarePins::RFID_MOSI;
 
 constexpr unsigned long DIGITAL_POLL_MS = 10;
 constexpr unsigned long RFID_POLL_MS = 250;

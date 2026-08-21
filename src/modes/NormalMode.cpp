@@ -3,19 +3,20 @@
 #include "hardware/AudioPlayer.h"
 #include "hardware/RFIDManager.h"
 #include "hardware/WebServerManager.h"
+#include "hardware/HardwarePins.h"
+#include "hardware/PowerManager.h"
 #include "secrets.h"
 
 #include <Arduino.h>
 #include <Preferences.h>
-#include <math.h>
 
 namespace {
 
-constexpr uint8_t VOL_PIN = 34;
+constexpr uint8_t VOL_PIN = HardwarePins::VOLUME;
 constexpr int VOL_RAW_MIN = 40;
 constexpr int VOL_RAW_MAX = 4050;
 constexpr int VOL_MAX = 10;
-constexpr float VOL_RESPONSE_CURVE = 0.35f;
+constexpr unsigned long DF_VOLUME_COMMAND_SETTLE_MS = 120;
 constexpr unsigned long VOL_POLL_MS = 120;
 constexpr unsigned long VOL_STEP_STABLE_MS = 220;
 constexpr int VOL_RAW_LOG_DELTA = 80;
@@ -24,18 +25,19 @@ constexpr int VOL_RAIL_LOW = 25;
 constexpr int VOL_RAIL_HIGH = 4070;
 constexpr int VOL_GLITCH_JUMP = 900;
 constexpr unsigned long VOL_RAIL_STABLE_MS = 350;
-constexpr uint8_t PLAY_BUTTON_PIN = 26;
+constexpr uint8_t PLAY_BUTTON_PIN = HardwarePins::PLAY_BUTTON;
 constexpr unsigned long PLAY_BUTTON_DEBOUNCE_MS = 50;
-constexpr uint8_t BTN_FROWARD_PIN = 14;
-constexpr uint8_t BTN_BACK_PIN = 13;
+constexpr uint8_t BTN_FROWARD_PIN = HardwarePins::FORWARD_BUTTON;
+constexpr uint8_t BTN_BACK_PIN = HardwarePins::BACK_BUTTON;
 constexpr unsigned long TRACK_BUTTON_DEBOUNCE_MS = 20;
-constexpr uint8_t TIMER_BUTTON_PIN = 25;
+constexpr uint8_t TIMER_BUTTON_PIN = HardwarePins::TIMER_BUTTON;
 constexpr unsigned long TIMER_BUTTON_DEBOUNCE_MS = 50;
 constexpr unsigned long TIMER_BUTTON_LONG_PRESS_MS = 1200;
 constexpr uint8_t TIMER_BUTTON_STEP_MINUTES = 10;
-constexpr uint8_t STATUS_LED_PIN = 32;
+constexpr uint8_t STATUS_LED_PIN = HardwarePins::STATUS_LED;
 constexpr unsigned long STATUS_LED_BLINK_MS = 80;
 constexpr unsigned long RFID_POLL_MS = 50;
+constexpr unsigned long INACTIVITY_SLEEP_MS = 10UL * 60UL * 1000UL;
 
 const char* folderTitle(uint8_t folder) {
   switch (folder) {
@@ -145,12 +147,15 @@ const char* folderTitle(uint8_t folder) {
 RFIDManager rfidManager;
 AudioPlayer audioPlayer;
 WebServerManager webServer;
+PowerManager powerManager;
 Preferences bookmarkPrefs;
 
 uint8_t currentFolder = 0;
 int lastVolume = -1;
+int lastDfVolume = -1;
 int filteredVolumeRaw = -1;
 int pendingVolume = -1;
+int pendingDfVolume = -1;
 int lastVolumeRawLogged = -1;
 int volumeRawCandidate = -1;
 int lastAcceptedVolumeRaw = -1;
@@ -159,6 +164,7 @@ unsigned long lastVolumePollAt = 0;
 unsigned long lastVolumeRawLoggedAt = 0;
 unsigned long volumeRawCandidateSince = 0;
 unsigned long lastRfidPollAt = 0;
+unsigned long lastRelevantActivityAt = 0;
 String activeCardUid = "";
 bool activeBookmarkValid = false;
 uint8_t activeBookmarkTrack = 0;
@@ -183,6 +189,7 @@ unsigned long btnBackRawChangedAt = 0;
 bool timerButtonRawState = false;
 bool timerButtonState = false;
 bool lastTimerButtonState = false;
+bool timerButtonArmed = true;
 unsigned long timerButtonRawChangedAt = 0;
 unsigned long timerButtonPressedAt = 0;
 bool statusLedOn = false;
@@ -193,6 +200,11 @@ unsigned long notificationEndsAt = 0;
 String lastDebugCardUid = "";
 unsigned long lastDebugCardLoggedAt = 0;
 unsigned long lastRfidNoCardLoggedAt = 0;
+bool dfPlayerUnavailableLogged = false;
+bool initialDfVolumeApplied = false;
+uint8_t playStartCount = 0;
+uint8_t lastTonuinoFolder = 0;
+uint8_t lastTonuinoMode = 0;
 constexpr unsigned long NOTIFICATION_MS = 3000;
 constexpr unsigned long RFID_DEBUG_REPEAT_MS = 2000;
 
@@ -252,21 +264,32 @@ int stabilizeVolumeRaw(int raw, unsigned long now) {
 }
 
 int rawToVolume(int raw) {
-  raw = constrain(raw, 0, 4095);
+  raw = constrain(raw, VOL_RAW_MIN, VOL_RAW_MAX);
+  return map(raw, VOL_RAW_MIN, VOL_RAW_MAX, VOL_MAX, 0);
+}
 
-  constexpr int thresholds[VOL_MAX] = {
-    199, 350, 550, 850, 1200, 1650, 2150, 2700, 3300, 3900
-  };
-
-  for (int volume = 0; volume < VOL_MAX; volume++) {
-    if (raw <= thresholds[volume]) {
-      return volume;
-    }
-  }
-  return VOL_MAX;
+int rawToDfVolume(int raw) {
+  if (raw >= 4070) return 0;
+  if (raw >= 3950) return 1;
+  if (raw >= 3750) return 2;
+  if (raw >= 3500) return 3;
+  if (raw >= 3300) return 4;
+  if (raw >= 3000) return 6;
+  if (raw >= 2700) return 8;
+  if (raw >= 2400) return 10;
+  if (raw >= 2100) return 12;
+  if (raw >= 1700) return 14;
+  if (raw >= 1200) return 16;
+  if (raw >= 700) return 18;
+  if (raw >= 300) return 19;
+  return 20;
 }
 
 void logWeb(const String& text);
+
+void noteRelevantActivity() {
+  lastRelevantActivityAt = millis();
+}
 
 void applyVolume() {
   unsigned long now = millis();
@@ -281,45 +304,49 @@ void applyVolume() {
   filteredVolumeRaw = stableRaw;
 
   int volume = rawToVolume(filteredVolumeRaw);
+  int dfVolume = rawToDfVolume(filteredVolumeRaw);
   bool rawMoved = lastVolumeRawLogged < 0 ||
                   abs(filteredVolumeRaw - lastVolumeRawLogged) >= VOL_RAW_LOG_DELTA;
   bool rawLogReady = static_cast<unsigned long>(now - lastVolumeRawLoggedAt) >= VOL_RAW_LOG_MS;
   if (rawMoved && rawLogReady) {
     lastVolumeRawLogged = filteredVolumeRaw;
     lastVolumeRawLoggedAt = now;
-    logWeb("[VOLUME] GPIO34 RAW=" + String(raw) +
-           " STABLE=" + String(stableRaw) +
-           " FILT=" + String(filteredVolumeRaw) +
-           " -> " + String(volume) + "/" + String(VOL_MAX));
+    String potiLog = "[POTI] RAW=" + String(raw) +
+                     " STABLE=" + String(stableRaw) +
+                     " FILT=" + String(filteredVolumeRaw) +
+                     " -> logical " + String(volume) + "/10";
+    Serial.println(potiLog);
+    logWeb(potiLog);
   }
 
-  if (volume == lastVolume) {
+  if (volume == lastVolume && dfVolume == lastDfVolume) {
     pendingVolume = volume;
+    pendingDfVolume = dfVolume;
     pendingVolumeChangedAt = now;
     return;
   }
 
-  if (volume != pendingVolume) {
+  if (volume != pendingVolume || dfVolume != pendingDfVolume) {
     pendingVolume = volume;
+    pendingDfVolume = dfVolume;
     pendingVolumeChangedAt = now;
   }
 
-  bool largeChange = abs(volume - lastVolume) >= 2;
+  bool largeChange = lastDfVolume < 0 || abs(dfVolume - lastDfVolume) >= 4;
   bool stableStep = static_cast<unsigned long>(now - pendingVolumeChangedAt) >= VOL_STEP_STABLE_MS;
   if (!largeChange && !stableStep) {
     return;
   }
 
   lastVolume = volume;
-  audioPlayer.setVolume(volume);
-  Serial.println("[NORMAL] Volume " + String(volume) + "/" + String(VOL_MAX) +
-                 " RAW=" + String(raw) +
-                 " STABLE=" + String(stableRaw) +
-                 " FILT=" + String(filteredVolumeRaw));
-  logWeb("[VOLUME] GPIO34 Lautstärke " + String(volume) + "/" + String(VOL_MAX) +
-         " RAW=" + String(raw) +
-         " STABLE=" + String(stableRaw) +
-         " FILT=" + String(filteredVolumeRaw));
+  lastDfVolume = dfVolume;
+  audioPlayer.setVolume(volume, dfVolume);
+  noteRelevantActivity();
+  String volumeLog = "[VOLUME] RAW=" + String(filteredVolumeRaw) +
+                     " -> DF " + String(audioPlayer.getMappedDfVolume()) +
+                     "/30 (direkt aus RAW, logical " + String(volume) + "/10)";
+  Serial.println(volumeLog);
+  logWeb(volumeLog);
 }
 
 void logCurrentFolder() {
@@ -470,6 +497,7 @@ void updatePlayButton() {
   if (rawState != playButtonState &&
       static_cast<unsigned long>(now - playButtonRawChangedAt) >= PLAY_BUTTON_DEBOUNCE_MS) {
     playButtonState = rawState;
+    noteRelevantActivity();
   }
 }
 
@@ -496,6 +524,7 @@ void updateBtnForward() {
   Serial.println("[BTN_FROWARD] GPIO" + String(BTN_FROWARD_PIN) + " " + stateText);
   logWeb("[BTN_FROWARD] GPIO" + String(BTN_FROWARD_PIN) + " " + stateText);
   if (btnForwardState) {
+    noteRelevantActivity();
     if (audioPlayer.isPlayingNow()) {
       audioPlayer.next();
       Serial.println("[NORMAL] BTN_FROWARD GPIO" + String(BTN_FROWARD_PIN) + " GND -> naechster Titel");
@@ -531,6 +560,7 @@ void updateBtnBack() {
   Serial.println("[BTN_BACK] GPIO" + String(BTN_BACK_PIN) + " " + stateText);
   logWeb("[BTN_BACK] GPIO" + String(BTN_BACK_PIN) + " " + stateText);
   if (btnBackState) {
+    noteRelevantActivity();
     if (audioPlayer.isPlayingNow()) {
       audioPlayer.previous();
       Serial.println("[NORMAL] BTN_BACK GPIO" + String(BTN_BACK_PIN) + " GND -> vorheriger Titel");
@@ -557,12 +587,25 @@ void updateTimerButton() {
     timerButtonState = rawState;
   }
 
+  // A button held during boot selected maintenance mode. Ignore that entire
+  // press and arm the normal sleep-timer action only after a stable release.
+  if (!timerButtonArmed) {
+    lastTimerButtonState = timerButtonState;
+    if (!timerButtonState) {
+      timerButtonArmed = true;
+      timerButtonPressedAt = 0;
+      Serial.println("[TIMER] GPIO25 nach Wartungs-Boot freigegeben");
+    }
+    return;
+  }
+
   if (timerButtonState == lastTimerButtonState) {
     return;
   }
 
   lastTimerButtonState = timerButtonState;
   if (timerButtonState) {
+    noteRelevantActivity();
     timerButtonPressedAt = now;
     Serial.println("[TIMER] GPIO" + String(TIMER_BUTTON_PIN) + " gedrueckt");
     logWeb("[TIMER] GPIO" + String(TIMER_BUTTON_PIN) + " gedrueckt");
@@ -595,15 +638,46 @@ void startActiveCardPlayback() {
     return;
   }
 
+  if (!initialDfVolumeApplied || lastVolume < 0 || lastDfVolume < 0) {
+    Serial.println("[PLAY] Start wartet: DFPlayer-Initiallautstärke noch nicht angewendet");
+    logWeb("[PLAY] Start wartet: DFPlayer-Initiallautstärke noch nicht angewendet");
+    return;
+  }
+
   if (!activeCardUnchanged()) {
     Serial.println("[NORMAL] Play ignoriert: keine aktive Karte");
     logWeb("[PLAY] Start ignoriert: keine aktive Karte");
     return;
   }
 
-  audioPlayer.playFolderTrack(currentFolder, 1);
-  Serial.println("[NORMAL] Spiele Ordner " + String(currentFolder) + " ab Track 1");
-  logWeb("[RFID] Starte Ordner " + String(currentFolder) + " Track 1");
+  uint8_t startTrack = pendingStartTrack > 0 ? pendingStartTrack : 1;
+  playStartCount++;
+  String startLabel = playStartCount == 1 ? "erster START" : String(playStartCount) + ". START";
+  Serial.println("[PLAY] " + startLabel + " -> neuer Play-Befehl");
+  logWeb("[PLAY] " + startLabel + " -> neuer Play-Befehl");
+  audioPlayer.setVolume(lastVolume, lastDfVolume);
+  String cachedVolumeLog = "[VOLUME] RAW=" + String(filteredVolumeRaw) +
+                           " -> DF " + String(audioPlayer.getMappedDfVolume()) +
+                           "/30 (vor Folderstart, direkt aus RAW, logical " +
+                           String(lastVolume) + "/10)";
+  Serial.println(cachedVolumeLog);
+  logWeb(cachedVolumeLog);
+  delay(DF_VOLUME_COMMAND_SETTLE_MS);
+  Serial.println("[DFPLAYER] playFolder(" + String(currentFolder) + ", " +
+                 String(startTrack) + ")");
+  logWeb("[DFPLAYER] playFolder(" + String(currentFolder) + ", " +
+         String(startTrack) + ")");
+  audioPlayer.playFolderTrack(currentFolder, startTrack,
+                              pendingStartHasBookmark ? "BOOKMARK" : "RFID");
+  noteRelevantActivity();
+  String bookmarkInfo = pendingStartHasBookmark
+                            ? " (Bookmark @" + String(pendingStartSeconds) +
+                                  "s; Start am Trackanfang)"
+                            : "";
+  Serial.println("[NORMAL] Spiele Ordner " + String(currentFolder) +
+                 " ab Track " + String(startTrack) + bookmarkInfo);
+  logWeb("[RFID] Starte Ordner " + String(currentFolder) +
+         " Track " + String(startTrack) + bookmarkInfo);
 
   waitingForPlayButton = false;
   playbackPausedByButton = false;
@@ -621,6 +695,8 @@ void handlePlayButtonPlayback() {
       blinkStatusLed();
       logWeb("[PLAY] GPIO" + String(PLAY_BUTTON_PIN) + " kein GND");
       if (audioPlayer.isPlayingNow()) {
+        Serial.println("[PLAY] STOP -> Pause-Befehl");
+        logWeb("[PLAY] STOP -> Pause-Befehl");
         writeCurrentBookmark("Play Button Pause");
         audioPlayer.pause();
         playbackPausedByButton = true;
@@ -640,7 +716,12 @@ void handlePlayButtonPlayback() {
   if (waitingForPlayButton) {
     startActiveCardPlayback();
   } else if (playbackPausedByButton && activeCardUnchanged()) {
+    playStartCount++;
+    String startLabel = playStartCount == 2 ? "zweiter START" : String(playStartCount) + ". START";
+    Serial.println("[PLAY] " + startLabel + " -> RESUME");
+    logWeb("[PLAY] " + startLabel + " -> RESUME");
     audioPlayer.resume();
+    noteRelevantActivity();
     playbackPausedByButton = false;
     Serial.println("[NORMAL] GPIO" + String(PLAY_BUTTON_PIN) + " GND -> Fortsetzen");
     logWeb("[PLAY] GPIO" + String(PLAY_BUTTON_PIN) + " GND -> Fortsetzen");
@@ -751,14 +832,16 @@ void updateSleepTimer() {
   long remainingMs = static_cast<long>(sleepTimerEndsAt - millis());
 
   if (remainingMs <= 0) {
-    writeCurrentBookmark("Sleep Timer");
+    Serial.println("[POWER] Sleep-Timer abgelaufen");
+    bool bookmarkSaved = writeCurrentBookmark("Sleep Timer");
+    Serial.println(bookmarkSaved ? "[POWER] Bookmark gespeichert"
+                                 : "[POWER] Kein gueltiger Bookmark zu speichern");
     sleepTimerEndsAt = 0;
     lastSleepTimerDrawnSecond = 0;
-    audioPlayer.stop();
     currentFolder = 0;
     activeCardUid = "";
     rememberDisplayedBookmark(false, 0, 0);
-    Serial.println("[NORMAL] Sleep Timer abgelaufen -> Stop");
+    powerManager.beginDeepSleep(audioPlayer, rfidManager, webServer, STATUS_LED_PIN);
     return;
   }
 
@@ -822,6 +905,9 @@ void handleRFID() {
     return;
   }
 
+  lastTonuinoFolder = card.folder;
+  lastTonuinoMode = card.mode;
+
   if (card.mode != 2) {
     Serial.println("[NORMAL] Nicht unterstuetzter Modus: " + String(card.mode));
     logWeb("[RFID] Nicht unterstuetzter Modus: " + String(card.mode));
@@ -829,14 +915,20 @@ void handleRFID() {
   }
 
   if (!audioPlayer.isReady()) {
-    Serial.println("[NORMAL] DFPlayer nicht bereit");
-    logWeb("[RFID] Karte erkannt, aber DFPlayer nicht bereit");
+    if (!dfPlayerUnavailableLogged) {
+      dfPlayerUnavailableLogged = true;
+      Serial.println("[NORMAL] DFPlayer nicht bereit; Initialisierung/Recovery läuft");
+      logWeb("[RFID] Karte erkannt, aber DFPlayer-Initialisierung läuft");
+    }
     return;
   }
+  dfPlayerUnavailableLogged = false;
 
   if (card.uid == activeCardUid) {
     return;
   }
+
+  noteRelevantActivity();
 
   if (audioPlayer.isPlayingNow()) {
     writeCurrentBookmark("Kartenwechsel");
@@ -845,6 +937,7 @@ void handleRFID() {
 
   activeCardUid = card.uid;
   currentFolder = card.folder;
+  playStartCount = 0;
   waitingForPlayButton = true;
   playbackPausedByButton = false;
   logWeb("[RFID] Karte " + card.uid + " -> Ordner " + String(card.folder) + " " + folderTitle(card.folder));
@@ -852,8 +945,26 @@ void handleRFID() {
   pendingStartTrack = 1;
   pendingStartSeconds = 0;
   rememberDisplayedBookmark(false, 0, 0);
+  CardBookmark bookmark;
+  if (loadLocalBookmark(card.uid, card.folder, bookmark)) {
+    pendingStartHasBookmark = true;
+    pendingStartTrack = bookmark.track;
+    pendingStartSeconds = bookmark.seconds;
+    rememberDisplayedBookmark(true, bookmark.track, bookmark.seconds);
+    Serial.println("[NORMAL] Bookmark geladen: Ordner " + String(bookmark.folder) +
+                   " Track " + String(bookmark.track) + " @" +
+                   String(bookmark.seconds) + "s; Wiedergabe ab Trackanfang");
+    logWeb("[BOOKMARK] Track " + String(bookmark.track) + " @" +
+           String(bookmark.seconds) + "s geladen");
+  }
   Serial.println("[RFID] Kartenordner " + String(card.folder) +
                  " | UID " + card.uid + " | Modus " + String(card.mode));
+  Serial.println("[CARD] UID " + card.uid + " Folder " + String(card.folder) +
+                 " Mode " + String(card.mode) + " PlayGPIO=" +
+                 String(playButtonState ? "LOW/START" : "HIGH/STOP"));
+  logWeb("[CARD] UID " + card.uid + " Folder " + String(card.folder) +
+         " Mode " + String(card.mode) + " PlayGPIO=" +
+         String(playButtonState ? "LOW/START" : "HIGH/STOP"));
 
   if (playButtonState) {
     startActiveCardPlayback();
@@ -870,19 +981,42 @@ void handleFolderFinished() {
 
   clearCurrentBookmark("Ordnerende");
   currentFolder = 0;
-  Serial.println("[NORMAL] Ordner beendet");
+  Serial.println("[POWER] Ordner vollständig beendet -> Deep Sleep");
+  logWeb("[POWER] Ordner vollständig beendet -> Deep Sleep");
+  powerManager.beginDeepSleep(audioPlayer, rfidManager, webServer, STATUS_LED_PIN);
+}
+
+void updateInactivitySleep() {
+  if (audioPlayer.isPlayingNow()) {
+    noteRelevantActivity();
+    return;
+  }
+
+  if (static_cast<unsigned long>(millis() - lastRelevantActivityAt) <
+      INACTIVITY_SLEEP_MS) {
+    return;
+  }
+
+  Serial.println("[POWER] 10 Minuten keine aktive Wiedergabe -> Deep Sleep");
+  logWeb("[POWER] 10 Minuten keine aktive Wiedergabe -> Deep Sleep");
+  writeCurrentBookmark("Inaktivität");
+  powerManager.beginDeepSleep(audioPlayer, rfidManager, webServer, STATUS_LED_PIN);
 }
 
 } // namespace
 
-void NormalMode::begin() {
+void NormalMode::begin(bool maintenanceMode, bool bootButtonMustBeReleased) {
   Serial.println("[NORMAL] Starte NormalMode");
+  lastRelevantActivityAt = millis();
 
   rfidManager.begin();
   bookmarkPrefs.begin("bookmarks", false);
   
-  // Starte Web-Interface statt WiFi zu deaktivieren
-  webServer.begin(WIFI_SSID, WIFI_PASS, OTA_NAME, &audioPlayer);
+  if (maintenanceMode) {
+    webServer.begin(WIFI_SSID, WIFI_PASS, OTA_NAME, &audioPlayer, &rfidManager);
+  } else {
+    webServer.disable();
+  }
   if (rfidManager.isReaderConnected()) {
     logWeb("[RFID] RC522 Version " + rfidManager.getReaderVersionText() + " erkannt");
     logWeb("[RFID] Warte auf Karte");
@@ -927,9 +1061,12 @@ void NormalMode::begin() {
   lastTimerButtonState = timerButtonState;
   timerButtonRawChangedAt = millis();
   timerButtonPressedAt = timerButtonState ? millis() : 0;
+  timerButtonArmed = !(bootButtonMustBeReleased && timerButtonState);
   Serial.println("[TIMER] Timerbutton GPIO" + String(TIMER_BUTTON_PIN) + " initial " + String(timerButtonState ? "gedrueckt" : "frei"));
   logWeb("[TIMER] GPIO" + String(TIMER_BUTTON_PIN) + " initial " + String(timerButtonState ? "gedrueckt" : "frei"));
 
+  audioPlayer.setLogCallback(logWeb);
+  initialDfVolumeApplied = false;
   if (audioPlayer.begin()) {
     Serial.println("[NORMAL] " + audioPlayer.getStatusText());
     logWeb("[DFPLAYER] " + audioPlayer.getStatusText());
@@ -941,15 +1078,26 @@ void NormalMode::begin() {
     lastVolumeRawLogged = initialRaw;
     lastVolumeRawLoggedAt = millis();
     int initialVolume = rawToVolume(initialRaw);
+    int initialDfVolume = rawToDfVolume(initialRaw);
     lastVolume = initialVolume;
+    lastDfVolume = initialDfVolume;
     pendingVolume = initialVolume;
+    pendingDfVolume = initialDfVolume;
     pendingVolumeChangedAt = millis();
     lastVolumePollAt = millis();
-    audioPlayer.setVolume(initialVolume);
-    Serial.println("[NORMAL] Startvolume " + String(initialVolume) + "/" + String(VOL_MAX) +
-                   " RAW=" + String(initialRaw));
-    logWeb("[VOLUME] GPIO34 Startlautstärke " + String(initialVolume) + "/" +
-           String(VOL_MAX) + " RAW=" + String(initialRaw));
+    audioPlayer.setVolume(initialVolume, initialDfVolume);
+    delay(DF_VOLUME_COMMAND_SETTLE_MS);
+    initialDfVolumeApplied = true;
+    String initialPotiLog = "[POTI] RAW=" + String(initialRaw) +
+                            " -> logical " + String(initialVolume) + "/10";
+    String initialVolumeLog = "[VOLUME] RAW=" + String(initialRaw) +
+                              " -> DF " + String(audioPlayer.getMappedDfVolume()) +
+                              "/30 (direkt aus RAW, logical " +
+                              String(initialVolume) + "/10)";
+    Serial.println(initialPotiLog);
+    logWeb(initialPotiLog);
+    Serial.println(initialVolumeLog);
+    logWeb(initialVolumeLog);
   } else {
     Serial.println("[NORMAL] " + audioPlayer.getStatusText());
     logWeb("[DFPLAYER] " + audioPlayer.getStatusText());
@@ -957,9 +1105,54 @@ void NormalMode::begin() {
 }
 
 void NormalMode::update() {
+  if (powerManager.isPending()) {
+    powerManager.update();
+    delay(10);
+    return;
+  }
+  MaintenanceSnapshot maintenance;
+  maintenance.activeCardUid = activeCardUid;
+  maintenance.currentFolder = currentFolder;
+  maintenance.waitingForPlay = waitingForPlayButton;
+  maintenance.sleepTimerEndsAt = sleepTimerEndsAt;
+  maintenance.playButton = playButtonState;
+  maintenance.forwardButton = btnForwardState;
+  maintenance.backButton = btnBackState;
+  maintenance.timerButton = timerButtonState;
+  maintenance.volumeRaw = filteredVolumeRaw;
+  maintenance.logicalVolume = lastVolume;
+  maintenance.lastTonuinoFolder = lastTonuinoFolder;
+  maintenance.lastTonuinoMode = lastTonuinoMode;
+  webServer.setSnapshot(maintenance);
   audioPlayer.update();
+  if (audioPlayer.consumeRecoveredAfterBoot()) {
+    dfPlayerUnavailableLogged = false;
+    initialDfVolumeApplied = false;
+    int recoveredRaw = filteredVolumeRaw >= 0 ? filteredVolumeRaw : readMedianRaw();
+    int recoveredVolume = lastVolume >= 0 ? lastVolume : rawToVolume(recoveredRaw);
+    int recoveredDfVolume = lastDfVolume >= 0 ? lastDfVolume : rawToDfVolume(recoveredRaw);
+    filteredVolumeRaw = recoveredRaw;
+    lastVolume = recoveredVolume;
+    lastDfVolume = recoveredDfVolume;
+    pendingVolume = recoveredVolume;
+    pendingDfVolume = recoveredDfVolume;
+    audioPlayer.setVolume(recoveredVolume, recoveredDfVolume);
+    delay(DF_VOLUME_COMMAND_SETTLE_MS);
+    initialDfVolumeApplied = true;
+    Serial.println("[NORMAL] DFPlayer-Recovery erfolgreich");
+    logWeb("[DFPLAYER] Recovery erfolgreich");
+    String recoveryVolumeLog = "[VOLUME] RAW=" + String(recoveredRaw) +
+                               " -> DF " + String(audioPlayer.getMappedDfVolume()) +
+                               "/30 (Recovery, direkt aus RAW, logical " +
+                               String(recoveredVolume) + "/10)";
+    Serial.println(recoveryVolumeLog);
+    logWeb(recoveryVolumeLog);
+  }
   webServer.update();
   handleFolderFinished();
+  if (powerManager.isPending()) {
+    return;
+  }
   updatePlayButton();
   updateBtnForward();
   updateBtnBack();
@@ -969,6 +1162,10 @@ void NormalMode::update() {
   applyVolume();
   handleRFID();
   updateSleepTimer();
+  if (powerManager.isPending()) {
+    return;
+  }
+  updateInactivitySleep();
   updateTemporaryNotification();
 
   delay(20);

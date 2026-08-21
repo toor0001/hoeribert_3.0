@@ -255,6 +255,12 @@ bool RFIDManager::isReaderConnected() const {
   return readerVersion != 0x00 && readerVersion != 0xFF;
 }
 
+void RFIDManager::powerDown() {
+  rfid.PCD_StopCrypto1();
+  rfid.PCD_AntennaOff();
+  rfid.PCD_SoftPowerDown();
+}
+
 bool RFIDManager::hasLastRawData() const {
   return lastRawDataAvailable;
 }

@@ -2,6 +2,6 @@
 
 class NormalMode {
 public:
-  void begin();
+  void begin(bool maintenanceMode, bool bootButtonMustBeReleased);
   void update();
 };
