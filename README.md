@@ -88,7 +88,6 @@ gut in den vorhandenen Mechanismus.
 - ▶️ Play/Pause über die Recorder-Bedienung
 - ⏮️ / ⏭️ vorheriger und nächster Track
 - ⏲️ Sleep-Timer in 10-Minuten-Schritten
-- 💡 Status-LED zur Rückmeldung
 - 💾 lokale Bookmark-Infrastruktur im ESP32-NVS
 - 📡 optionaler Wartungsmodus mit WLAN und Browserdiagnose
 - 🔄 OTA-Firmwareupdates nur im Wartungsmodus
@@ -246,6 +245,20 @@ RFID-Diagnosefirmware geprüft werden.
 
 ---
 
+### RC522: Aufbau und Fehlersuche
+
+- Den RC522 ausschließlich mit **3,3 V** betreiben; `IRQ` bleibt unbeschaltet.
+- Leitungen kurz, sauber und mit gemeinsamer Masse führen. Der Leseabstand ist
+  klein; Karte und Antenne möglichst nahe und parallel zueinander platzieren.
+- Die Qualität verschiedener RC522-Platinen und Karten schwankt. Bei instabiler
+  Erkennung zunächst Versorgung, Kontakte, Leitungsführung und Abstand prüfen.
+- Der RC522 ist ECHT ZICKIG! Ich habe 10 verschiedene Platinen getestet - die mit "HW-126" unterhalb des chips markierte funktioniert nicht!!
+- `platformio.ini` setzt `MFRC522_SPICLOCK=1000000` und reduziert den SPI-Takt
+  damit bewusst auf 1 MHz. Das erhöht bei der realen Verdrahtung die Robustheit.
+  
+
+---
+
 ## 🎵 microSD-Karte vorbereiten
 
 Eine microSD-Karte mit **FAT16 oder FAT32 und höchstens 32 GB** verwenden. Für
@@ -274,18 +287,6 @@ diese in Diagnoseausgaben entsprechend an. Die DFRobot-Dokumentation garantiert
 keine bestimmte Kopierreihenfolge. Bei unerwarteter Wiedergabereihenfolge die
 Karte deshalb frisch formatieren und die sauber nummerierten Dateien in der
 gewünschten Reihenfolge neu kopieren.
-
-### RC522: Aufbau und Fehlersuche
-
-- Den RC522 ausschließlich mit **3,3 V** betreiben; `IRQ` bleibt unbeschaltet.
-- Leitungen kurz, sauber und mit gemeinsamer Masse führen. Der Leseabstand ist
-  klein; Karte und Antenne möglichst nahe und parallel zueinander platzieren.
-- Die Qualität verschiedener RC522-Platinen und Karten schwankt. Bei instabiler
-  Erkennung zunächst Versorgung, Kontakte, Leitungsführung und Abstand prüfen.
-- Ein Versionsregister wie `0x92` ist bei einem MFRC522 plausibel. `0x00` oder
-  `0xFF` deutet typischerweise auf Versorgung-, Verdrahtungs- oder SPI-Probleme.
-- `platformio.ini` setzt `MFRC522_SPICLOCK=1000000` und reduziert den SPI-Takt
-  damit bewusst auf 1 MHz. Das erhöht bei der realen Verdrahtung die Robustheit.
 
 ---
 
