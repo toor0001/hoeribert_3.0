@@ -151,6 +151,7 @@ PowerManager powerManager;
 Preferences bookmarkPrefs;
 
 uint8_t currentFolder = 0;
+uint8_t lastPlayedFolder = 0;
 int lastVolume = -1;
 int lastDfVolume = -1;
 int filteredVolumeRaw = -1;
@@ -633,6 +634,15 @@ bool activeCardUnchanged() {
   return activeCardUid.length() > 0;
 }
 
+void rememberStartedFolder(uint8_t folder) {
+  if (folder == 0 || folder == lastPlayedFolder) {
+    return;
+  }
+
+  lastPlayedFolder = folder;
+  bookmarkPrefs.putUChar("lastFolder", folder);
+}
+
 void startActiveCardPlayback() {
   if (activeCardUid == "" || currentFolder == 0 || !audioPlayer.isReady()) {
     return;
@@ -651,6 +661,19 @@ void startActiveCardPlayback() {
   }
 
   uint8_t startTrack = pendingStartTrack > 0 ? pendingStartTrack : 1;
+  if (pendingStartHasBookmark && currentFolder != lastPlayedFolder) {
+    Serial.println("[BOOKMARK] Ordner " + String(currentFolder) +
+                   " nicht fortgesetzt: zwischenzeitlich Ordner " +
+                   String(lastPlayedFolder) + " gespielt");
+    logWeb("[BOOKMARK] Ordner " + String(currentFolder) +
+           " nicht fortgesetzt: zwischenzeitlich Ordner " +
+           String(lastPlayedFolder) + " gespielt");
+    pendingStartHasBookmark = false;
+    pendingStartTrack = 1;
+    pendingStartSeconds = 0;
+    rememberDisplayedBookmark(false, 0, 0);
+    startTrack = 1;
+  }
   playStartCount++;
   String startLabel = playStartCount == 1 ? "erster START" : String(playStartCount) + ". START";
   Serial.println("[PLAY] " + startLabel + " -> neuer Play-Befehl");
@@ -938,7 +961,8 @@ void handleRFID() {
   pendingStartSeconds = 0;
   rememberDisplayedBookmark(false, 0, 0);
   CardBookmark bookmark;
-  if (loadLocalBookmark(card.uid, card.folder, bookmark)) {
+  if (loadLocalBookmark(card.uid, card.folder, bookmark) &&
+      card.folder == lastPlayedFolder) {
     pendingStartHasBookmark = true;
     pendingStartTrack = bookmark.track;
     pendingStartSeconds = bookmark.seconds;
@@ -948,6 +972,13 @@ void handleRFID() {
                    String(bookmark.seconds) + "s; Wiedergabe ab Trackanfang");
     logWeb("[BOOKMARK] Track " + String(bookmark.track) + " @" +
            String(bookmark.seconds) + "s geladen");
+  } else if (bookmark.valid && card.folder != lastPlayedFolder) {
+    Serial.println("[BOOKMARK] Ordner " + String(card.folder) +
+                   " nicht fortgesetzt: zwischenzeitlich Ordner " +
+                   String(lastPlayedFolder) + " gespielt");
+    logWeb("[BOOKMARK] Ordner " + String(card.folder) +
+           " nicht fortgesetzt: zwischenzeitlich Ordner " +
+           String(lastPlayedFolder) + " gespielt");
   }
   Serial.println("[RFID] Kartenordner " + String(card.folder) +
                  " | UID " + card.uid + " | Modus " + String(card.mode));
@@ -1003,6 +1034,8 @@ void NormalMode::begin(bool maintenanceMode, bool bootButtonMustBeReleased) {
 
   rfidManager.begin();
   bookmarkPrefs.begin("bookmarks", false);
+  lastPlayedFolder = bookmarkPrefs.getUChar("lastFolder", 0);
+  audioPlayer.setFolderStartCallback(rememberStartedFolder);
   
   if (maintenanceMode) {
     webServer.begin(WIFI_SSID, WIFI_PASS, OTA_NAME, &audioPlayer, &rfidManager);

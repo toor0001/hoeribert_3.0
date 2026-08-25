@@ -25,8 +25,10 @@ struct PlaybackPosition {
 class AudioPlayer {
 public:
   using LogCallback = void (*)(const String& line);
+  using FolderStartCallback = void (*)(uint8_t folder);
 
   void setLogCallback(LogCallback callback);
+  void setFolderStartCallback(FolderStartCallback callback);
   bool begin();
   void update();
   bool consumeRecoveredAfterBoot();
@@ -67,6 +69,7 @@ private:
   uint8_t initializationAttempts = 0;
   unsigned long nextInitializationAttemptAt = 0;
   LogCallback logCallback = nullptr;
+  FolderStartCallback folderStartCallback = nullptr;
   bool playing = false;
   bool folderPlaybackActive = false;
   bool folderFinished = false;

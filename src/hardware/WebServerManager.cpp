@@ -37,7 +37,7 @@ result.textContent=body.message||('HTTP '+response.status);await refresh()}catch
 document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>playerAction(button.dataset.action)));
 async function refresh(){try{let s=await (await fetch('/api/status')).json();
 let groups={SYSTEM:['uptime','build','maintenance','wifi','ip','rssi'],
-RFID:['rc522','rc522Version','uid','cardType','rfidError','tonuino'],
+RFID:['rc522','rc522Version','rxGain','cardDetected','uid','cardType','tonuino','rfidError','detectionQuality','detectionSamples'],
 DFPLAYER:['dfReady','dfState','folder','track','trackCount','volume'],
 PLAYER:['activeUid','activeFolder','waitingForPlay','sleepTimer'],
 'GPIO / BEDIENUNG':['playButton','forwardButton','backButton','timerButton','volumeRaw','logicalVolume']};
@@ -204,11 +204,25 @@ String WebServerManager::getStatusJSON() const {
   json += "\"rssi\":\"" + String(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0) + " dBm\",";
   json += "\"rc522\":\"" + String(rfid && rfid->isReaderConnected() ? "ja" : "nein") + "\",";
   json += "\"rc522Version\":\"" + String(rfid ? rfid->getReaderVersionText() : "-") + "\",";
+  json += "\"rxGain\":\"" + String(rfid ? rfid->getRxGainText() : "-") +
+          String(rfid && rfid->isRxGainMaximum() ? " / Maximum" : "") + "\",";
+  json += "\"cardDetected\":\"" +
+          String(rfid && rfid->isCardRecentlyDetected() ? "Ja" : "Nein") + "\",";
   json += "\"uid\":\"" + jsonEscape(rfid ? rfid->getLastUid() : "") + "\",";
   json += "\"cardType\":\"" + jsonEscape(rfid ? rfid->getLastCardType() : "") + "\",";
   json += "\"rfidError\":\"" + jsonEscape(rfid ? rfid->getLastError() : "") + "\",";
   json += "\"tonuino\":\"Folder " + String(snapshot.lastTonuinoFolder) +
           " / Mode " + String(snapshot.lastTonuinoMode) + "\",";
+  if (rfid && rfid->hasDetectionQuality()) {
+    json += "\"detectionQuality\":\"" +
+            String(rfid->getDetectionQualityPercent()) + " %\",";
+    json += "\"detectionSamples\":\"Erfolgreich: " +
+            String(rfid->getDetectionQualitySuccesses()) + " / " +
+            String(rfid->getDetectionQualityAttempts()) + "\",";
+  } else {
+    json += "\"detectionQuality\":\"--\",";
+    json += "\"detectionSamples\":\"--\",";
+  }
   json += "\"dfReady\":\"" + String(player && player->isReady() ? "ja" : "nein") + "\",";
   json += "\"dfState\":\"" + dfState + "\",";
   json += "\"folder\":" + String(audio.folder) + ",\"track\":" + String(audio.track) + ",";

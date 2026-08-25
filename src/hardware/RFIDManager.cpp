@@ -9,14 +9,17 @@ void RFIDManager::begin() {
   delay(50);
   rfid.PCD_AntennaOn();
   rfid.PCD_SetAntennaGain(rfid.RxGain_max);
+  configuredRxGain = rfid.PCD_GetAntennaGain();
   readerVersion = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  resetDetectionQuality();
 
   for (byte i = 0; i < 6; i++) {
     rfidKey.keyByte[i] = 0xFF;
   }
 
-  Serial.println("[RFID] RC522 Version " + getReaderVersionText() +
-                 (isReaderConnected() ? " erkannt" : " nicht erreichbar"));
+  Serial.println("[RFID] MFRC522 Version " + getReaderVersionText());
+  Serial.println("[RFID] RxGain: " + getRxGainText() +
+                 (isRxGainMaximum() ? " / Maximum" : " / nicht Maximum"));
 }
 
 bool RFIDManager::update() {
@@ -27,11 +30,15 @@ bool RFIDManager::update() {
   lastTonuinoCard = TonuinoCardData{};
   cardPresent = false;
 
-  if (!selectCard()) return false;
+  unsigned long now = millis();
+  if (!selectCard()) {
+    recordDetectionResult(false, now);
+    return false;
+  }
 
   cardPresent = true;
+  recordDetectionResult(true, now);
   String uid = uidToString(&rfid.uid);
-  unsigned long now = millis();
 
   bool shouldReport = uid != lastReportedUid || now - lastUidTime > 2000;
 
@@ -251,6 +258,38 @@ String RFIDManager::getReaderVersionText() const {
   return text;
 }
 
+String RFIDManager::getRxGainText() const {
+  return String(rxGainDb(configuredRxGain)) + " dB";
+}
+
+bool RFIDManager::isRxGainMaximum() const {
+  return configuredRxGain == MFRC522::RxGain_max;
+}
+
+bool RFIDManager::isCardRecentlyDetected() const {
+  return lastCardSeenAt != 0 &&
+         static_cast<unsigned long>(millis() - lastCardSeenAt) <= CARD_RECENT_MS;
+}
+
+bool RFIDManager::hasDetectionQuality() const {
+  return isCardRecentlyDetected() && qualityWindowCount > 0;
+}
+
+uint8_t RFIDManager::getDetectionQualityPercent() const {
+  if (!hasDetectionQuality()) return 0;
+  return static_cast<uint8_t>((static_cast<uint16_t>(qualitySuccessCount) * 100U +
+                               qualityWindowCount / 2U) /
+                              qualityWindowCount);
+}
+
+uint8_t RFIDManager::getDetectionQualitySuccesses() const {
+  return hasDetectionQuality() ? qualitySuccessCount : 0;
+}
+
+uint8_t RFIDManager::getDetectionQualityAttempts() const {
+  return hasDetectionQuality() ? qualityWindowCount : 0;
+}
+
 bool RFIDManager::isReaderConnected() const {
   return readerVersion != 0x00 && readerVersion != 0xFF;
 }
@@ -324,4 +363,46 @@ String RFIDManager::bytesToHexLine(const byte* data, int length) const {
 void RFIDManager::finishCard() {
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
+}
+
+void RFIDManager::recordDetectionResult(bool success, unsigned long now) {
+  if (success) {
+    lastCardSeenAt = now;
+  } else if (lastCardSeenAt == 0 ||
+             static_cast<unsigned long>(now - lastCardSeenAt) > CARD_RECENT_MS) {
+    resetDetectionQuality();
+    return;
+  }
+
+  if (qualityWindowCount < QUALITY_WINDOW_SIZE) {
+    qualityWindow[qualityWindowIndex] = success;
+    qualityWindowCount++;
+    if (success) qualitySuccessCount++;
+  } else {
+    if (qualityWindow[qualityWindowIndex]) qualitySuccessCount--;
+    qualityWindow[qualityWindowIndex] = success;
+    if (success) qualitySuccessCount++;
+  }
+  qualityWindowIndex = (qualityWindowIndex + 1) % QUALITY_WINDOW_SIZE;
+}
+
+void RFIDManager::resetDetectionQuality() {
+  qualityWindowCount = 0;
+  qualityWindowIndex = 0;
+  qualitySuccessCount = 0;
+  lastCardSeenAt = 0;
+}
+
+uint8_t RFIDManager::rxGainDb(byte gain) {
+  switch (gain) {
+    case MFRC522::RxGain_23dB:
+    case MFRC522::RxGain_23dB_2: return 23;
+    case MFRC522::RxGain_33dB: return 33;
+    case MFRC522::RxGain_38dB: return 38;
+    case MFRC522::RxGain_43dB: return 43;
+    case MFRC522::RxGain_48dB: return 48;
+    case MFRC522::RxGain_18dB:
+    case MFRC522::RxGain_18dB_2:
+    default: return 18;
+  }
 }

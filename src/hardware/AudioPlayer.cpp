@@ -4,6 +4,10 @@ void AudioPlayer::setLogCallback(LogCallback callback) {
   logCallback = callback;
 }
 
+void AudioPlayer::setFolderStartCallback(FolderStartCallback callback) {
+  folderStartCallback = callback;
+}
+
 bool AudioPlayer::begin() {
   dfSerial.begin(9600, SERIAL_8N1, DF_RX_PIN, DF_TX_PIN);
   logInitialization("UART gestartet (9600 Baud, RX GPIO" + String(DF_RX_PIN) +
@@ -369,6 +373,9 @@ void AudioPlayer::startFolderTrack(uint8_t folder, uint8_t track, const char* so
   trackStartedAt = millis();
   trackElapsedBeforePause = 0;
   statusText = "Ordner " + String(folder) + " Track " + String(track);
+  if (folderStartCallback) {
+    folderStartCallback(folder);
+  }
 }
 
 uint16_t AudioPlayer::currentTrackSeconds() const {

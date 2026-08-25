@@ -359,6 +359,11 @@ gespeicherten Sekunden dienen nur als Diagnosewert; ein unzuverlässiges Seeking
 innerhalb einer MP3-Datei wird bewusst nicht versucht. Nach vollständig
 abgespieltem Ordner wird der Bookmark gelöscht.
 
+Ein Bookmark setzt nur das zuletzt gestartete Hörbuch fort. Wurde zwischenzeitlich
+ein anderer Hörbuchordner gestartet, beginnt ein später erneut eingelegtes früheres
+Hörbuch wieder bei Track 1. Deep Sleep während desselben Hörbuchs erhält dagegen
+die Resume-Funktion.
+
 ---
 
 ## 📡 WLAN, OTA und Live-Diagnose
