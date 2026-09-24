@@ -1,4 +1,5 @@
 #include "NormalMode.h"
+#include "VirtualEpisodes.h"
 
 #include "hardware/AudioPlayer.h"
 #include "hardware/RFIDManager.h"
@@ -151,6 +152,9 @@ PowerManager powerManager;
 Preferences bookmarkPrefs;
 
 uint8_t currentFolder = 0;
+uint16_t logicalEpisode = 0;
+bool isVirtualEpisode = false;
+bool inactivitySleepSuppressedLogged = false;
 uint8_t lastPlayedFolder = 0;
 int lastVolume = -1;
 int lastDfVolume = -1;
@@ -288,7 +292,13 @@ int rawToDfVolume(int raw) {
 
 void logWeb(const String& text);
 
+bool shouldSuppressDeepSleep() {
+  // Includes legacy episode 99, which card selection already marks as virtual.
+  return isVirtualEpisode && logicalEpisode >= 99;
+}
+
 void noteRelevantActivity() {
+  inactivitySleepSuppressedLogged = false;
   lastRelevantActivityAt = millis();
 }
 
@@ -351,6 +361,11 @@ void applyVolume() {
 }
 
 void logCurrentFolder() {
+  if (isVirtualEpisode) {
+    Serial.println("[VIRTUAL] episode=" + String(logicalEpisode) +
+                   " -> folder=99 track=" + String(pendingStartTrack));
+    return;
+  }
   Serial.println("[NORMAL] Ordner: " + String(currentFolder) + " - " + folderTitle(currentFolder));
 }
 
@@ -526,7 +541,9 @@ void updateBtnForward() {
   logWeb("[BTN_FROWARD] GPIO" + String(BTN_FROWARD_PIN) + " " + stateText);
   if (btnForwardState) {
     noteRelevantActivity();
-    if (audioPlayer.isPlayingNow()) {
+    if (audioPlayer.isPlayingNow() && audioPlayer.isSingleTrackPlayback()) {
+      Serial.println("[VIRTUAL] next ignored: single episode");
+    } else if (audioPlayer.isPlayingNow()) {
       audioPlayer.next();
       Serial.println("[NORMAL] BTN_FROWARD GPIO" + String(BTN_FROWARD_PIN) + " GND -> naechster Titel");
       logWeb("[BTN_FROWARD] GPIO" + String(BTN_FROWARD_PIN) + " GND -> naechster Titel");
@@ -562,7 +579,9 @@ void updateBtnBack() {
   logWeb("[BTN_BACK] GPIO" + String(BTN_BACK_PIN) + " " + stateText);
   if (btnBackState) {
     noteRelevantActivity();
-    if (audioPlayer.isPlayingNow()) {
+    if (audioPlayer.isPlayingNow() && audioPlayer.isSingleTrackPlayback()) {
+      Serial.println("[VIRTUAL] previous ignored: single episode");
+    } else if (audioPlayer.isPlayingNow()) {
       audioPlayer.previous();
       Serial.println("[NORMAL] BTN_BACK GPIO" + String(BTN_BACK_PIN) + " GND -> vorheriger Titel");
       logWeb("[BTN_BACK] GPIO" + String(BTN_BACK_PIN) + " GND -> vorheriger Titel");
@@ -635,12 +654,21 @@ bool activeCardUnchanged() {
 }
 
 void rememberStartedFolder(uint8_t folder) {
+  if (audioPlayer.isSingleTrackPlayback() && isVirtualEpisode) {
+    // Keep the legacy last-folder gate, but never identify a virtual episode as 99.
+    lastPlayedFolder = 0;
+    bookmarkPrefs.putUChar("lastFolder", 0);
+    bookmarkPrefs.putUShort("lastEpisode", logicalEpisode);
+    return;
+  }
+
   if (folder == 0 || folder == lastPlayedFolder) {
     return;
   }
 
   lastPlayedFolder = folder;
   bookmarkPrefs.putUChar("lastFolder", folder);
+  bookmarkPrefs.putUShort("lastEpisode", folder);
 }
 
 void startActiveCardPlayback() {
@@ -683,7 +711,7 @@ void startActiveCardPlayback() {
   logWeb("[DFPLAYER] playFolder(" + String(currentFolder) + ", " +
          String(startTrack) + ")");
   audioPlayer.playFolderTrack(currentFolder, startTrack,
-                              pendingStartHasBookmark ? "BOOKMARK" : "RFID");
+                              pendingStartHasBookmark ? "BOOKMARK" : "RFID", isVirtualEpisode);
   noteRelevantActivity();
   String bookmarkInfo = pendingStartHasBookmark
                             ? " (Bookmark @" + String(pendingStartSeconds) +
@@ -807,6 +835,9 @@ void clearLocalBookmark(const String& uid) {
 }
 
 bool writeCurrentBookmark(const char* reason) {
+  // No reliable intra-track seek: virtual cards always restart their mapped file.
+  if (isVirtualEpisode || audioPlayer.isSingleTrackPlayback()) return false;
+
   PlaybackPosition position = audioPlayer.getPlaybackPosition();
   if (!position.valid || position.folder == 0 || position.track == 0 || activeCardUid == "") {
     Serial.println("[NORMAL] Bookmark ignoriert: keine Karte/Position");
@@ -828,6 +859,7 @@ bool writeCurrentBookmark(const char* reason) {
 }
 
 bool clearCurrentBookmark(const char* reason) {
+  if (isVirtualEpisode) return false;
   if (activeCardUid == "") {
     Serial.println("[NORMAL] Bookmark loeschen ignoriert: keine aktive Karte");
     return false;
@@ -839,6 +871,22 @@ bool clearCurrentBookmark(const char* reason) {
   return true;
 }
 
+void enterAwakeIdle() {
+  audioPlayer.stop();
+  currentFolder = 0;
+  waitingForPlayButton = false;
+  playbackPausedByButton = false;
+  pendingStartHasBookmark = false;
+  pendingStartTrack = 0;
+  pendingStartSeconds = 0;
+  sleepTimerEndsAt = 0;
+  lastSleepTimerDrawnSecond = 0;
+  rememberDisplayedBookmark(false, 0, 0);
+  // Retain logicalEpisode/isVirtualEpisode for subsequent inactivity checks.
+  // Keep the UID until card removal so a held card/PLAY cannot restart playback.
+  noteRelevantActivity();
+}
+
 void updateSleepTimer() {
   if (sleepTimerEndsAt == 0) {
     return;
@@ -847,6 +895,12 @@ void updateSleepTimer() {
   long remainingMs = static_cast<long>(sleepTimerEndsAt - millis());
 
   if (remainingMs <= 0) {
+    if (shouldSuppressDeepSleep()) {
+      Serial.println("[TIMER] episode=" + String(logicalEpisode) +
+                     " stopped, deep sleep suppressed");
+      enterAwakeIdle();
+      return;
+    }
     Serial.println("[POWER] Sleep-Timer abgelaufen");
     bool bookmarkSaved = writeCurrentBookmark("Sleep Timer");
     Serial.println(bookmarkSaved ? "[POWER] Bookmark gespeichert"
@@ -923,7 +977,7 @@ void handleRFID() {
   lastTonuinoFolder = card.folder;
   lastTonuinoMode = card.mode;
 
-  if (card.mode != 2) {
+  if (card.mode != 2 && card.mode != 8) {
     Serial.println("[NORMAL] Nicht unterstuetzter Modus: " + String(card.mode));
     logWeb("[RFID] Nicht unterstuetzter Modus: " + String(card.mode));
     return;
@@ -943,6 +997,40 @@ void handleRFID() {
     return;
   }
 
+  const bool virtualCard = card.mode == 8 || (card.mode == 2 && card.folder == 99);
+  const uint16_t episode = card.mode == 8
+      ? uint16_t(card.special) | (uint16_t(card.special2) << 8)
+      : card.folder;
+  uint8_t mappedTrack = 1;
+  if (virtualCard) {
+    if (card.mode == 8) {
+      Serial.println("[VIRTUAL] card episode=" + String(episode));
+    }
+    if (card.folder != 99 || !mapVirtualEpisodeToTrack(episode, mappedTrack)) {
+      Serial.println(card.folder != 99
+          ? "[VIRTUAL] invalid folder=" + String(card.folder)
+          : "[VIRTUAL] unmapped episode=" + String(episode));
+      if (audioPlayer.isPlayingNow()) writeCurrentBookmark("Kartenwechsel");
+      audioPlayer.stop();
+      // Remember the rejected UID to avoid repeated errors while it stays present.
+      activeCardUid = card.uid;
+      currentFolder = 0;
+      logicalEpisode = 0;
+      isVirtualEpisode = false;
+      waitingForPlayButton = false;
+      playbackPausedByButton = false;
+      pendingStartHasBookmark = false;
+      pendingStartTrack = 0;
+      pendingStartSeconds = 0;
+      rememberDisplayedBookmark(false, 0, 0);
+      noteRelevantActivity();
+      return;
+    }
+    if (card.mode == 2) {
+      Serial.println("[VIRTUAL] legacy episode 99 -> folder=99 track=1");
+    }
+  }
+
   noteRelevantActivity();
 
   if (audioPlayer.isPlayingNow()) {
@@ -952,16 +1040,18 @@ void handleRFID() {
 
   activeCardUid = card.uid;
   currentFolder = card.folder;
+  logicalEpisode = episode;
+  isVirtualEpisode = virtualCard;
   playStartCount = 0;
   waitingForPlayButton = true;
   playbackPausedByButton = false;
   logWeb("[RFID] Karte " + card.uid + " -> Ordner " + String(card.folder) + " " + folderTitle(card.folder));
   pendingStartHasBookmark = false;
-  pendingStartTrack = 1;
+  pendingStartTrack = mappedTrack;
   pendingStartSeconds = 0;
   rememberDisplayedBookmark(false, 0, 0);
   CardBookmark bookmark;
-  if (loadLocalBookmark(card.uid, card.folder, bookmark) &&
+  if (!isVirtualEpisode && loadLocalBookmark(card.uid, card.folder, bookmark) &&
       card.folder == lastPlayedFolder) {
     pendingStartHasBookmark = true;
     pendingStartTrack = bookmark.track;
@@ -1002,6 +1092,16 @@ void handleFolderFinished() {
     return;
   }
 
+  if (isVirtualEpisode && audioPlayer.isSingleTrackPlayback()) {
+    Serial.println("[VIRTUAL] finished episode=" + String(logicalEpisode) +
+                   " track=" + String(audioPlayer.getPlaybackPosition().track));
+  }
+  if (shouldSuppressDeepSleep()) {
+    Serial.println("[VIRTUAL] finished episode=" + String(logicalEpisode) +
+                   ", staying awake");
+    enterAwakeIdle();
+    return;
+  }
   clearCurrentBookmark("Ordnerende");
   currentFolder = 0;
   Serial.println("[POWER] Ordner vollständig beendet -> Deep Sleep");
@@ -1017,6 +1117,15 @@ void updateInactivitySleep() {
 
   if (static_cast<unsigned long>(millis() - lastRelevantActivityAt) <
       INACTIVITY_SLEEP_MS) {
+    return;
+  }
+
+  if (shouldSuppressDeepSleep()) {
+    if (!inactivitySleepSuppressedLogged) {
+      Serial.println("[IDLE] episode=" + String(logicalEpisode) +
+                     " inactivity sleep suppressed");
+      inactivitySleepSuppressedLogged = true;
+    }
     return;
   }
 

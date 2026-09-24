@@ -35,7 +35,9 @@ public:
   bool isReady() const;
   bool isPlayingNow() const;
   void playFolder(uint8_t folder, const char* source = "OTHER");
-  void playFolderTrack(uint8_t folder, uint8_t track, const char* source = "OTHER");
+  void playFolderTrack(uint8_t folder, uint8_t track, const char* source = "OTHER",
+                       bool singleTrack = false);
+  bool isSingleTrackPlayback() const { return singleTrackPlayback; }
   PlaybackPosition getPlaybackPosition() const;
   bool consumeFolderFinished();
   void stop();
@@ -72,6 +74,7 @@ private:
   FolderStartCallback folderStartCallback = nullptr;
   bool playing = false;
   bool folderPlaybackActive = false;
+  bool singleTrackPlayback = false;
   bool folderFinished = false;
   uint8_t currentFolder = 0;
   uint8_t currentTrack = 0;

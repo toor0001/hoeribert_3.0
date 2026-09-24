@@ -14,6 +14,7 @@ bool AudioPlayer::begin() {
                     ", TX GPIO" + String(DF_TX_PIN) + ")");
   playing = false;
   folderPlaybackActive = false;
+  singleTrackPlayback = false;
   folderFinished = false;
   currentFolder = 0;
   currentTrack = 0;
@@ -153,6 +154,7 @@ void AudioPlayer::playFolder(uint8_t folder, const char* source) {
 
   resetFinishHistory();
   folderFinished = false;
+  singleTrackPlayback = false;
   tracksInFolder = dfPlayer.readFileCountsInFolder(folder);
   if (tracksInFolder < 1) {
     tracksInFolder = 0;
@@ -164,12 +166,14 @@ void AudioPlayer::playFolder(uint8_t folder, const char* source) {
 }
 
 
-void AudioPlayer::playFolderTrack(uint8_t folder, uint8_t track, const char* source) {
+void AudioPlayer::playFolderTrack(uint8_t folder, uint8_t track, const char* source,
+                                  bool singleTrack) {
   if (!ready) return;
 
   resetFinishHistory();
   folderFinished = false;
-  if (SKIP_FOLDER_COUNT_QUERY_ON_START) {
+  singleTrackPlayback = singleTrack;
+  if (singleTrackPlayback || SKIP_FOLDER_COUNT_QUERY_ON_START) {
     tracksInFolder = 0;
     logPlayback("t=" + String(millis()) +
                 "ms Foldercount-Abfrage vor Start übersprungen");
@@ -218,6 +222,7 @@ void AudioPlayer::stop() {
   dfPlayer.stop();
   playing = false;
   folderPlaybackActive = false;
+  singleTrackPlayback = false;
   folderFinished = false;
   currentFolder = 0;
   currentTrack = 0;
@@ -244,6 +249,10 @@ void AudioPlayer::resume() {
 
 void AudioPlayer::next() {
   if (!ready) return;
+  if (singleTrackPlayback) {
+    logPlayback("next ignored: single episode");
+    return;
+  }
 
   resetFinishHistory();
   if (folderPlaybackActive && currentFolder > 0 && currentTrack > 0) {
@@ -264,6 +273,10 @@ void AudioPlayer::next() {
 
 void AudioPlayer::previous() {
   if (!ready) return;
+  if (singleTrackPlayback) {
+    logPlayback("previous ignored: single episode");
+    return;
+  }
 
   resetFinishHistory();
   if (folderPlaybackActive && currentFolder > 0 && currentTrack > 1) {
@@ -394,12 +407,12 @@ void AudioPlayer::handlePlayFinished() {
     return;
   }
 
-  if (tracksInFolder == 0 && currentTrack < 255) {
+  if (!singleTrackPlayback && tracksInFolder == 0 && currentTrack < 255) {
     startFolderTrack(currentFolder, currentTrack + 1, "FINISH_EVENT");
     return;
   }
 
-  if (tracksInFolder > 0 && currentTrack < tracksInFolder) {
+  if (!singleTrackPlayback && tracksInFolder > 0 && currentTrack < tracksInFolder) {
     startFolderTrack(currentFolder, currentTrack + 1, "FINISH_EVENT");
     return;
   }

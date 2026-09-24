@@ -101,7 +101,7 @@ gut in den vorhandenen Mechanismus.
 
 Eine RFID-Karte enthält TonUINO-kompatible Metadaten. Höribert liest die Karte mit dem RC522 ein und verwendet die hinterlegte Ordnernummer zur Auswahl des entsprechenden Verzeichnisses auf der microSD-Karte des DFPlayers.
 
-Aktuell wird bewusst nur **TonUINO Mode 2 (Album/Ordner)** abgespielt. Die Tracks eines Ordners werden dabei der Reihe nach wiedergegeben.
+**TonUINO Mode 2 (Album/Ordner)** spielt die Folgen 1–98 wie bisher Track für Track ab. Folge 99 und höhere virtuelle Folgen verwenden jeweils eine vollständige MP3-Datei im physischen Ordner 99 (siehe RFID-Kompatibilität).
 
 ```text
 RFID-Karte
@@ -207,15 +207,27 @@ Special2
 
 Für MIFARE Classic wird der TonUINO-Datenblock mit dem Standard-Key `FF FF FF FF FF FF` gelesen.
 
-### Aktuelle Einschränkung
+### Unterstützte Karten und virtuelle Folgen
 
-Die NormalMode-Logik unterstützt momentan nur:
+- Folgen **1–98**: `mode=2`, `folder=Folge`, `special=0`, `special2=0`;
+  normale Wiedergabe aller Tracks des jeweiligen Ordners.
+- Alte Karten für **Folge 99** (`mode=2`, `folder=99`) bleiben kompatibel und
+  spielen ausschließlich `/99/001.mp3`.
+- Virtuelle Folgen **99–999**: `mode=8`, `folder=99`. Die logische Folgennummer
+  wird als Little-Endian-`uint16_t` gelesen:
+  `uint16_t(special) | (uint16_t(special2) << 8)`.
+  Beispielsweise codieren `special=231`, `special2=3` die Folge 999.
 
-```text
-Mode 2 = Album / Ordner
-```
+Die explizite Tabelle in [VirtualEpisodes.h](src/modes/VirtualEpisodes.h) ordnet
+jede unterstützte logische Folge einem physischen Track zu. Die Zuordnung hat
+bewusste Lücken und wird nicht berechnet: Folge 99 → Track 1, Folge 100 → Track 2,
+Folge 175 → Track 43 und Folge 999 → Track 46. Nicht gelistete Folgen werden mit
+Fehlermeldung abgelehnt; es gibt keine Ersatzwiedergabe.
 
-Andere TonUINO-Modi werden erkannt, aber derzeit nicht abgespielt.
+Jeder dieser Tracks im physischen Ordner 99 enthält **eine vollständige Folge**.
+Am Dateiende wird niemals zum nächsten physischen Track gewechselt. Vor/Zurück
+wird während virtueller Wiedergabe ignoriert. Andere TonUINO-Modi werden derzeit
+nicht abgespielt.
 
 ### RFID-Karten vorbereiten
 
@@ -234,9 +246,9 @@ unterstützten Ultralight-Tags sucht die Firmware ab Seite 4 nach dem Cookie
 | 0–3 | Magic Cookie `13 37 B3 47` | Prüfung der Kompatibilität |
 | 4 | Formatversion | Diagnose |
 | 5 | Ordner `1`–`99` | Auswahl des SD-Ordners |
-| 6 | Modus | derzeit muss dies `2` sein |
-| 7 | Special | wird gelesen, derzeit nicht ausgewertet |
-| 8 | Special 2 | wird gelesen, derzeit nicht ausgewertet |
+| 6 | Modus | `2` (Ordner) oder `8` (virtuelle Folge in Ordner 99) |
+| 7 | Special | bei Mode 8: niederwertiges Byte der Folgennummer |
+| 8 | Special 2 | bei Mode 8: höherwertiges Byte der Folgennummer |
 
 MIFARE-Classic-Karten werden mit dem üblichen Default-Key
 `FF FF FF FF FF FF` authentifiziert. Karten mit abweichenden Schlüsseln kann
@@ -312,6 +324,7 @@ Der Taster an **GPIO 25** steuert den Sleep-Timer:
 - **weiterer kurzer Druck:** nochmals +10 Minuten
 - **langer Tastendruck ab ca. 1,2 s:** Timer löschen
 
+Für Folgen **1–98** bleibt das bisherige Verhalten unverändert:
 Nach Ablauf wird die aktuelle Position gespeichert. Anschließend werden DFPlayer,
 RC522, WLAN und Wartungsdienste soweit softwareseitig möglich heruntergefahren und
 der ESP32 wechselt in Deep Sleep.
@@ -322,6 +335,19 @@ ohne Karte, das Warten auf PLAY nach erkannter Karte und eine zehn Minuten lang
 nicht fortgesetzte Pause. Aktive Wiedergabe sowie relevante Bedien- und
 Playback-Aktionen setzen die Inaktivitätszeit zurück. Bei einem vollständig
 beendeten Ordner wird dessen Bookmark vor dem Schlafen gelöscht.
+
+**Folge 99 und alle unterstützten virtuellen Folgen ab 99 bleiben absichtlich
+wach.** Das gilt auch für alte Mode-2-Karten der Folge 99. Automatischer Deep Sleep
+wird bei Folgenende, Timerablauf und Inaktivität unterdrückt. Bei Folgenende oder
+Timerablauf stoppt die Wiedergabe, der Timer wird gelöscht und das Gerät wartet
+im wachen Leerlauf auf eine neue Kartenauswahl. Eine liegenbleibende Karte mit
+aktivem PLAY startet nicht sofort erneut. Die logische Folgenidentität bleibt
+auch nach Abschluss oder Kartenentnahme erhalten, damit die Inaktivitätsschwelle
+später keinen Deep Sleep auslöst. Eine neu ausgewählte Folge 1–98 verwendet wieder
+das normale Schlafverhalten.
+
+Es gibt keinen manuellen Deep-Sleep-Befehl in der Firmware; der lange GPIO25-Druck
+löscht nur den Timer. Ausschalten über den vorhandenen Hauptschalter bleibt möglich.
 
 Zum Aufwecken GPIO25 kurz drücken. Ein EXT0-Wakeup über GPIO25 startet immer den
 normalen Playerbetrieb mit ausgeschaltetem WLAN und wird nicht als Wartungsstart
@@ -345,7 +371,7 @@ Gesamtruhestrom des Geräts.
 
 Im Code existiert bereits eine lokale Bookmark-Infrastruktur auf Basis der ESP32-`Preferences`.
 
-Positionen werden unter anderem beim
+Für die normalen Folgen 1–98 werden Positionen unter anderem beim
 
 - Pausieren,
 - Kartenwechsel und
@@ -363,6 +389,12 @@ Ein Bookmark setzt nur das zuletzt gestartete Hörbuch fort. Wurde zwischenzeitl
 ein anderer Hörbuchordner gestartet, beginnt ein später erneut eingelegtes früheres
 Hörbuch wieder bei Track 1. Deep Sleep während desselben Hörbuchs erhält dagegen
 die Resume-Funktion.
+
+Folge 99 und virtuelle Folgen verwenden keine Legacy-Track-Bookmarks. Die zuletzt
+gestartete logische Folge wird separat gespeichert. Nach einem echten Neustart
+oder AUS/EIN beginnt ihre vollständige MP3-Datei wieder am Anfang; exaktes Resume
+innerhalb der Datei wird nicht unterstützt. PLAY-Pause/Fortsetzen ohne Neustart
+bleibt unverändert.
 
 ---
 
@@ -650,7 +682,7 @@ Das RFID-Hörspielkonzept und das Kartenformat wurden durch das
 Referenzen sind die [aktuelle TonUINO-TNG-Firmware](https://github.com/tonuino/TonUINO-TNG)
 und das [historische TonUINO-Repository](https://github.com/xfjx/TonUINO).
 Höribert ist ein unabhängiges DIY-Projekt, keine offizielle TonUINO-Firmware und
-derzeit nur mit Kartenmodus 2 kompatibel.
+mit Kartenmodus 2 sowie dem oben beschriebenen virtuellen Kartenmodus 8 kompatibel.
 
 Wesentliche externe Software:
 
